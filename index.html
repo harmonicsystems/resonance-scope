@@ -82,7 +82,11 @@
   .vchip:focus-visible{outline:2px solid var(--filter);outline-offset:2px}
   .readf{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--ink);margin-left:auto}
   .readf span{color:var(--ink-faint)}
-  .readf b{color:var(--source);font-weight:600}
+  .readf b{color:var(--filter);font-weight:600}   /* F1/F2 = filter (cool) */
+  .readf b.f0{color:var(--source)}                /* F0 = source (warm) */
+  .readf b.unvoiced{opacity:.45}
+  .readf .sep{opacity:.45}
+  .readf .hint{color:var(--ink-faint);font-size:12px}
 
   .lower{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;margin-top:22px}
   @media(max-width:760px){.lower{grid-template-columns:1fr}}
@@ -194,7 +198,7 @@
     <span class="lbl">tag as</span>
     <div id="vchips"></div>
   </div>
-  <div class="readf" id="readf"><span>F1</span> — &nbsp; <span>F2</span> —</div>
+  <div class="readf" id="readf"><span class="src">F0</span> <b class="f0 unvoiced">—</b> <span class="sep">·</span> <span>F1</span> <b class="v1">—</b> <span>F2</span> <b class="v2">—</b> <span class="hint" id="readfHint"></span></div>
 </div>
 
 <div class="lower">
@@ -245,6 +249,8 @@
 <p class="note" style="border-left-color:var(--filter)"><b>What the camera can and can't see.</b> The mouth score reads only two visible dials — jaw <i>aperture</i> and lip <i>spread</i> — normalized to your face so it's relative, not absolute. Tongue frontness, lip protrusion (depth), and everything inside the tract stay invisible to a camera, exactly as nasality stays invisible to the mic. It's a <i>partial</i>, complementary hit-rate, not a fuller or "more correct" measurement — and it never grades your shape against a target.</p>
 
 <p class="note" style="border-left-color:var(--filter)"><b>About calibration.</b> Anchoring to your own /i a u/ turns raw Hz into a position <i>inside your own vowel space</i> — that's what makes clustering stable session-to-session and comparable across different vocal tracts. Two honest caveats: the normalized space is only as good as the anchors, so capture each corner while the steadiness meter is high; and normalization fixes the <i>scale</i>, not the underlying estimate — F1/F2 are still peak-picked, not LPC. The read-outs (VSA, centralization) describe <i>your own</i> space and are never a diagnosis.</p>
+
+<p class="note" style="border-left-color:var(--source)"><b>About F0 (the source).</b> F0 is the <i>source</i> — vocal-fold rate — shown in warm, distinct from the cool filter (F1/F2). It's a first-pass estimate too: it can octave-halve or double on breathy or creaky phonation. Unvoiced and whispered sounds have no F0, so a blank read-out is correct, not a failure. And in a cluster, F0 <i>drift</i> is a <b style="color:var(--ink-dim)">pitch-steadiness</b> check — it tells you whether you held pitch while varying the vowel — <i>not</i> a reproducibility score; high drift is a caution that a wide F1/F2 cluster may just be pitch wobble.</p>
 
 <footer>Runs entirely in your browser — no audio or video leaves the device, nothing is uploaded. Face landmarks are computed on-device and discarded; only the two mouth ratios are kept with each frozen point. Points persist locally between sessions.</footer>
 
@@ -304,6 +310,13 @@
   var startBtn=document.getElementById("startBtn"), freezeBtn=document.getElementById("freezeBtn"), statusEl=document.getElementById("status");
   var MAXHZ=4000, binHz=0, maxBin=0;
 
+  // ---- F0 (source): McLeod Pitch Method (NSDF), own time-domain path ----
+  var timeBuf=null, nsdf=null;                 // allocated in start()
+  var F0_MIN=65, F0_MAX=500;                   // 65 Hz reaches a low male chest voice (C2 ≈ 65.4)
+  var MPM_K=0.9, CLARITY_ENTER=0.93, CLARITY_STAY=0.80, RMS_MIN=0.005;
+  var F0_RING=5, F0_EMA=0.3, PITCH_EVERY=3, F0REC_MAX=14, SHOW_NOTE=true;
+  var f0Ring=[], f0Recent=[], f0Disp=0, f0Conf=0, voiced=false, pitchTick=0;
+
   startBtn.addEventListener("click", function(){ running ? stopMic() : start(); });
   async function start(){
     if(running) return;
@@ -325,6 +338,8 @@
     byteBuf = new Uint8Array(analyser.frequencyBinCount);
     binHz = actx.sampleRate / analyser.fftSize;
     maxBin = Math.min(analyser.frequencyBinCount, Math.floor(MAXHZ/binHz));
+    timeBuf = new Float32Array(analyser.fftSize); nsdf = new Float32Array(analyser.fftSize);
+    f0Ring=[]; f0Recent=[]; f0Disp=0; f0Conf=0; voiced=false; pitchTick=0;
     running=true; lastFrameT=0; fpsSmoothed=0;
     startBtn.textContent="Stop microphone";
     freezeBtn.disabled=false;
@@ -339,6 +354,7 @@
     if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
     if(actx){ try{ actx.close(); }catch(e){} actx=null; }
     recent=[];
+    f0Ring=[]; f0Recent=[]; f0Disp=0; f0Conf=0; voiced=false; timeBuf=null; nsdf=null; paintF0Readout();
     startBtn.textContent="Start microphone";
     freezeBtn.disabled=true;
     statusEl.textContent="Microphone off."; statusEl.className="status";
@@ -357,6 +373,7 @@
     recent.push(lin); if(recent.length>RECENT_MAX) recent.shift();
     paintColumn();
     if(calMode) calTick();
+    if(pitchTick++ % PITCH_EVERY === 0) updateF0(detectF0());
     if(RS.debug){
       var now=performance.now();
       if(lastFrameT){ var inst=1000/(now-lastFrameT); fpsSmoothed=fpsSmoothed?fpsSmoothed*0.9+inst*0.1:inst; }
@@ -402,6 +419,84 @@
     return {f1:f1,f2:f2,i1:i1,i2:i2};
   }
 
+  // ---- F0 (source) detection: McLeod Pitch Method on the time-domain signal ----
+  // NSDF = 2·r(τ)/m(τ) ∈ [-1,1]; key-maximum peak-pick (octave defense) + parabolic
+  // interpolation for sub-Hz precision. Clarity (peak height) is the voiced/unvoiced confidence.
+  function detectF0(){
+    if(!timeBuf || !running) return null;
+    analyser.getFloatTimeDomainData(timeBuf);
+    var N=timeBuf.length, sr=actx.sampleRate, i;
+    var mean=0; for(i=0;i<N;i++) mean+=timeBuf[i]; mean/=N;
+    var rms=0; for(i=0;i<N;i++){ var x=timeBuf[i]-mean; timeBuf[i]=x; rms+=x*x; }  // DC removal in place
+    rms=Math.sqrt(rms/N);
+    if(rms<RMS_MIN) return null;                                                    // silence gate
+    var tauMin=Math.floor(sr/F0_MAX), tauMax=Math.min(N-1, Math.ceil(sr/F0_MIN));
+    if(tauMax<=tauMin+1) return null;
+    for(var tau=tauMin;tau<=tauMax;tau++){
+      var r=0,m=0, lim=N-tau;
+      for(i=0;i<lim;i++){ var a=timeBuf[i], b=timeBuf[i+tau]; r+=a*b; m+=a*a+b*b; }
+      nsdf[tau]= m>0 ? 2*r/m : 0;
+    }
+    // collect the maximum of each positive NSDF lobe (skips the τ≈0 lobe — search starts at tauMin)
+    var peaks=[], pos=nsdf[tauMin]>0, curMax=nsdf[tauMin], curTau=tauMin;
+    for(var t2=tauMin+1;t2<=tauMax;t2++){
+      var cur=nsdf[t2];
+      if(!pos){ if(cur>0){ pos=true; curMax=cur; curTau=t2; } }
+      else { if(cur>curMax){ curMax=cur; curTau=t2; } if(cur<=0){ peaks.push({tau:curTau,val:curMax}); pos=false; } }
+    }
+    if(pos) peaks.push({tau:curTau,val:curMax});
+    if(!peaks.length) return null;
+    var nMax=0,p; for(p=0;p<peaks.length;p++) if(peaks[p].val>nMax) nMax=peaks[p].val;
+    if(nMax<=0) return null;
+    var thresh=MPM_K*nMax, key=null;
+    for(p=0;p<peaks.length;p++){ if(peaks[p].val>=thresh){ key=peaks[p]; break; } }  // smallest lag ≥ threshold
+    if(!key) return null;
+    var tk=key.tau, delta=0, clarity=key.val;
+    if(tk>tauMin && tk<tauMax){
+      var y0=nsdf[tk-1], y1=nsdf[tk], y2=nsdf[tk+1], denom=(y0-2*y1+y2);
+      if(denom!==0){ delta=0.5*(y0-y2)/denom; if(delta>1)delta=1; else if(delta<-1)delta=-1; }
+      clarity=y1-0.25*(y0-y2)*delta;
+    }
+    var f0=sr/(tk+delta);
+    if(!isFinite(f0) || f0<62 || f0>555) return null;                               // range sanity
+    return {f0:f0, clarity:clarity};
+  }
+
+  function median(a){ if(!a.length) return 0; var b=a.slice().sort(function(x,y){return x-y;}); var m=Math.floor(b.length/2); return b.length%2 ? b[m] : (b[m-1]+b[m])/2; }
+  function noteName(hz){
+    if(!(hz>0)) return '';
+    var NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    var midi=Math.round(69+12*Math.log(hz/440)/Math.log(2));
+    return NAMES[((midi%12)+12)%12] + (Math.floor(midi/12)-1);
+  }
+  function updateF0(pf){
+    if(pf && pf.clarity>=(voiced?CLARITY_STAY:CLARITY_ENTER)){
+      if(!voiced){ f0Ring=[]; f0Recent=[]; f0Disp=0; }   // reset on voicing onset (don't drag from the old note)
+      voiced=true; f0Conf=pf.clarity;
+      f0Ring.push(pf.f0); if(f0Ring.length>F0_RING) f0Ring.shift();
+      var med=median(f0Ring);
+      f0Disp = f0Disp ? f0Disp*(1-F0_EMA)+med*F0_EMA : med;
+      f0Recent.push({f0:f0Disp,f0c:pf.clarity}); if(f0Recent.length>F0REC_MAX) f0Recent.shift();
+    } else {
+      voiced=false; f0Conf=pf?pf.clarity:0; f0Ring=[]; f0Recent=[];
+    }
+    paintF0Readout();
+    if(RS.debug) RS.set('source',{f0:voiced?Math.round(f0Disp):0, clarity:Math.round(f0Conf*100)/100, voiced:voiced});
+  }
+  function paintF0Readout(){
+    var el=document.querySelector('#readf .f0'); if(!el) return;
+    if(!voiced){ el.textContent='—'; el.classList.add('unvoiced'); return; }
+    el.classList.remove('unvoiced');
+    var hz=Math.round(f0Disp);
+    el.textContent = hz+' Hz' + (SHOW_NOTE ? ' ('+noteName(f0Disp)+')' : '');
+  }
+  // sample the source at freeze — confidence-weighted mean of the F0 ring (mirrors MouthScope.sample)
+  function sampleF0(){
+    if(!voiced || !f0Recent.length) return null;
+    var s=0,w=0; for(var i=0;i<f0Recent.length;i++){ var c=f0Recent[i].f0c||0.001; s+=f0Recent[i].f0*c; w+=c; }
+    return w>0 ? {f0:s/w, f0c:f0Conf} : null;
+  }
+
   // ---- freeze & measure ----
   freezeBtn.addEventListener("click", function(){
     if(!running) return;
@@ -409,19 +504,25 @@
     var f1=m.f1, f2=m.f2, i1=m.i1, i2=m.i2;
     var readf=document.getElementById("readf");
     if(f1&&f2){
-      readf.innerHTML='<span>F1</span> <b>'+Math.round(f1)+'</b> Hz &nbsp; <span>F2</span> <b>'+Math.round(f2)+'</b> Hz';
+      readf.querySelector(".v1").textContent=Math.round(f1)+' Hz';
+      readf.querySelector(".v2").textContent=Math.round(f2)+' Hz';
+      readf.querySelector(".hint").textContent="";
       // second instrument: if the camera is running, sample the averaged mouth shape too.
       var mouth = (window.MouthScope && window.MouthScope.active()) ? window.MouthScope.sample() : null;
+      var src = sampleF0();   // source read-out sampled at freeze (voiced only)
       var pt = {v:activeVowel.v, f1:f1, f2:f2};
       if(mouth){ pt.ap=mouth.ap; pt.wd=mouth.wd; }
+      if(src){ pt.f0=src.f0; pt.f0c=src.f0c; }   // additive; f0 now available here for a future n·F0 harmonic-collision flag
       points.push(pt);
       savePts(); drawPlot(); renderClusters(); refreshMouthMap();
       flash();
       // measurement provenance: fallback:true means no local spectral peak was found in the
       // band (plain-max was used) — a low-confidence estimate worth eyeballing.
-      RS.log('freeze','measured',{v:activeVowel.v,f1:Math.round(f1),f2:Math.round(f2),framesAveraged:recent.length,f1Fallback:i1.fallback,f2Fallback:i2.fallback,mouth:mouth});
+      RS.log('freeze','measured',{v:activeVowel.v,f1:Math.round(f1),f2:Math.round(f2),framesAveraged:recent.length,f1Fallback:i1.fallback,f2Fallback:i2.fallback,mouth:mouth,f0:src?Math.round(src.f0):null,f0c:src?src.f0c:null,voiced:!!src});
     }else{
-      readf.innerHTML='<span>no clear formants — hold the vowel steadier</span>';
+      readf.querySelector(".v1").textContent="—";
+      readf.querySelector(".v2").textContent="—";
+      readf.querySelector(".hint").textContent="no clear formants — hold the vowel steadier";
       RS.log('freeze','no clear formants',{f1:Math.round(f1||0),f2:Math.round(f2||0),framesAveraged:recent.length});
     }
   });
@@ -608,9 +709,20 @@
           mouthStr=' &nbsp; <span style="color:var(--filter)">mouth <b style="color:var(--filter)">±'+Math.sqrt(sa*sa+sw*sw).toFixed(3)+'</b></span>';
         }
       }
+      // pitch stability (source, warm): mean F0 + drift in cents. This is a CONTROL / confound
+      // check — "did pitch hold while you varied the vowel?" — NOT a vowel reproducibility score.
+      var gf=g.filter(function(p){return typeof p.f0==="number";});
+      var f0Str="";
+      if(gf.length>=2){
+        var mf0=mean(gf.map(function(p){return p.f0;}));
+        var cents=gf.map(function(p){return 1200*Math.log(p.f0/mf0)/Math.LN2;});
+        var drift=std(cents, mean(cents));
+        var steadyTxt = drift<=20 ? 'pitch held steady — clean resonance measurement' : 'pitch drifted — F1/F2 spread may be inflated';
+        f0Str=' &nbsp; <span style="color:var(--source)" title="'+steadyTxt+'">F0 '+Math.round(mf0)+' Hz <b style="color:var(--source)">±'+Math.round(drift)+'¢</b></span>';
+      }
       var d=document.createElement("div"); d.className="crow";
       d.innerHTML='<span class="cv" style="color:'+vColor(vw.bright)+'">'+vw.v+' <span style="color:var(--ink-faint)">×'+g.length+'</span></span>'+
-                  '<span class="cs">F1 '+Math.round(mf1)+' · F2 '+Math.round(mf2)+' &nbsp; '+spreadStr+mouthStr+'</span>';
+                  '<span class="cs">F1 '+Math.round(mf1)+' · F2 '+Math.round(mf2)+' &nbsp; '+spreadStr+mouthStr+f0Str+'</span>';
       el.appendChild(d);
     });
   }
