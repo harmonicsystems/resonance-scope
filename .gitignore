@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Editor / tooling
+.vscode/
+.idea/
+*.swp
+
+# Local preview scaffolding (not part of the app)
+.claude/launch.json
+
+# Note: vendor/mediapipe/ and models/ ARE committed on purpose —
+# they are the vendored, on-device dependency. Do not ignore them.

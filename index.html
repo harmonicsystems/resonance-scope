@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resonance Scope — live spectrogram + formant measure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#13121A; --panel:#1C1B25; --panel-2:#232230;
+    --hair:rgba(255,255,255,.09); --hair-strong:rgba(255,255,255,.18);
+    --ink:#ECE7DA; --ink-dim:#9A96A8; --ink-faint:#6B6879;
+    --source:#F4B942; --filter:#57C8BE; --word:#E86A5C; --nasal:#A98BE0;
+    --scuro:#251B36; --chiaro:#EDE0BE;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Space Grotesk",system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;padding:clamp(16px,4vw,44px);max-width:1080px;margin:0 auto}
+  .mono{font-family:"IBM Plex Mono",monospace}
+
+  header{margin-bottom:22px;border-bottom:1px solid var(--hair);padding-bottom:20px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--filter);margin:0 0 10px}
+  h1{font-size:clamp(24px,5vw,38px);font-weight:600;line-height:1.05;letter-spacing:-.02em;margin:0 0 12px}
+  .lede{color:var(--ink-dim);max-width:62ch;margin:0;font-size:15px}
+  .lede b{color:var(--ink);font-weight:500}
+
+  .startbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:22px 0 6px}
+  .primary{background:var(--filter);color:#0c1512;border:none;border-radius:2px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;padding:11px 20px;cursor:pointer}
+  .primary:hover{filter:brightness(1.08)}
+  .primary:disabled{opacity:.4;cursor:default}
+  .primary:focus-visible{outline:2px solid var(--source);outline-offset:2px}
+  .secondary{background:transparent;color:var(--filter);border:1px solid var(--filter);border-radius:2px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;padding:10px 18px;cursor:pointer}
+  .secondary:hover{background:rgba(87,200,190,.10)}
+  .secondary:disabled{opacity:.4;cursor:default}
+  .secondary:focus-visible{outline:2px solid var(--source);outline-offset:2px}
+  .status{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-faint)}
+  .status.live{color:var(--filter)}
+  .status.err{color:var(--word)}
+
+  .camwrap{display:none;margin-top:12px;align-items:center;gap:12px}
+  .camwrap.on{display:flex}
+  .camstage{position:relative;width:180px;height:135px;border:1px solid var(--filter);border-radius:3px;overflow:hidden;background:#0C0B12;flex:0 0 auto}
+  .camstage video,.camstage canvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1)}
+  .camstage video{object-fit:cover}
+  .camhint{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-faint);max-width:46ch}
+  .camhint b{color:var(--filter);font-weight:500}
+
+  .scopewrap{margin-top:16px;position:relative;background:#0C0B12;border:1px solid var(--hair);border-radius:3px;overflow:hidden}
+  #scope{display:block;width:100%;height:260px}
+  .scopeaxis{position:absolute;left:6px;top:6px;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-faint);pointer-events:none}
+  .scopeaxis.bot{top:auto;bottom:6px}
+  .freezerow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+  .freeze{background:var(--source);color:#241a05;border:none;border-radius:2px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;padding:11px 22px;cursor:pointer}
+  .freeze:hover{filter:brightness(1.06)}
+  .freeze:disabled{opacity:.35;cursor:default}
+  .freeze:focus-visible{outline:2px solid var(--filter);outline-offset:2px}
+  .vtag{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .vtag .lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin-right:2px}
+  .vchip{font-family:"IBM Plex Mono",monospace;font-size:15px;font-weight:600;width:40px;height:38px;border:1px solid var(--hair-strong);border-radius:2px;cursor:pointer;transition:box-shadow .12s}
+  .vchip.on{box-shadow:0 0 0 2px var(--source)}
+  .vchip:focus-visible{outline:2px solid var(--filter);outline-offset:2px}
+  .readf{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--ink);margin-left:auto}
+  .readf span{color:var(--ink-faint)}
+  .readf b{color:var(--source);font-weight:600}
+
+  .lower{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;margin-top:22px}
+  @media(max-width:760px){.lower{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--hair);border-radius:2px;padding:16px 18px}
+  .card h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--filter);margin:0 0 3px;font-family:"IBM Plex Mono",monospace;font-weight:600}
+  .card .sub{font-size:12px;color:var(--ink-faint);margin:0 0 12px}
+  #plot{display:block;width:100%;height:300px;background:#141019;border-radius:2px}
+  #mouthmap{display:block;width:100%;height:260px;background:#141019;border-radius:2px}
+  .plotctrls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .mini{font-family:"Space Grotesk",sans-serif;font-size:12px;cursor:pointer;border:1px solid var(--hair-strong);background:var(--panel-2);color:var(--ink-dim);padding:5px 11px;border-radius:2px}
+  .mini:hover{color:var(--ink)}
+  .clusters .crow{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--hair);font-size:13px}
+  .clusters .crow:first-of-type{border-top:0}
+  .crow .cv{font-family:"IBM Plex Mono",monospace;font-weight:600}
+  .crow .cs{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-faint);text-align:right}
+  .crow .cs b{color:var(--source)}
+
+  .note{margin-top:20px;font-size:12.5px;color:var(--ink-faint);border-left:2px solid var(--nasal);padding:3px 0 3px 13px;max-width:74ch}
+  .note b{color:var(--ink-dim);font-weight:500}
+  footer{margin-top:24px;padding-top:16px;border-top:1px solid var(--hair);font-size:12px;color:var(--ink-faint)}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <p class="eyebrow">live spectrogram · freeze-to-measure</p>
+  <h1>Resonance Scope</h1>
+  <p class="lede">One pipeline, two jobs. Sing a steady vowel on one pitch and watch it live — that's the <b>mirror</b>. When it looks stable, <b>freeze</b> and the same slice is measured for F1 &amp; F2 — that's the <b>instrument</b>. Repeated freezes of one vowel land as a cluster on the map below: <b>tight cluster = reproducible production</b>, the acoustic version of a reliability score.</p>
+</header>
+
+<div class="startbar">
+  <button class="primary" id="startBtn">Start microphone</button>
+  <button class="secondary" id="camBtn">Enable camera (optional)</button>
+  <span class="status" id="status">Microphone off. This needs mic permission — if the button does nothing here, download the file and open it in your own browser.</span>
+</div>
+
+<div class="camwrap" id="camwrap">
+  <div class="camstage">
+    <video id="camVideo" playsinline muted></video>
+    <canvas id="camOverlay" width="180" height="135"></canvas>
+  </div>
+  <p class="camhint" id="camHint"><b>Second instrument.</b> The camera watches the tract being shaped — jaw opening and lip spread. It never leaves this device. On <i>Freeze</i>, your mouth shape is recorded alongside F1/F2 to score how repeatably you land the same shape.</p>
+</div>
+
+<div class="scopewrap">
+  <canvas id="scope" width="900" height="260" aria-label="Live spectrogram"></canvas>
+  <span class="scopeaxis">4 kHz</span>
+  <span class="scopeaxis bot">0 Hz</span>
+</div>
+
+<div class="freezerow">
+  <button class="freeze" id="freezeBtn" disabled>Freeze &amp; measure</button>
+  <div class="vtag">
+    <span class="lbl">tag as</span>
+    <div id="vchips"></div>
+  </div>
+  <div class="readf" id="readf"><span>F1</span> — &nbsp; <span>F2</span> —</div>
+</div>
+
+<div class="lower">
+  <section class="card">
+    <h2>Vowel-space map (F1 × F2)</h2>
+    <p class="sub">Ghosts = rough reference targets. Your frozen points accumulate and cluster. Front/bright is left; open is down.</p>
+    <canvas id="plot" width="640" height="300"></canvas>
+    <div class="plotctrls">
+      <button class="mini" id="clearActive">Clear tagged vowel</button>
+      <button class="mini" id="clearAll">Clear all points</button>
+    </div>
+  </section>
+  <section class="card clusters">
+    <h2>Cluster spread</h2>
+    <p class="sub">Lower spread = more reproducible. This is your hit-rate, measured. With the camera on, a second <span style="color:var(--filter)">mouth</span> spread appears — the visual hit-rate.</p>
+    <div id="clusters"><p style="color:var(--ink-faint);font-size:13px;margin:0">No points yet. Freeze a tagged vowel to begin.</p></div>
+  </section>
+</div>
+
+<section class="card" id="mouthcard" style="display:none;margin-top:16px">
+  <h2 style="color:var(--filter)">Mouth-shape map (open × wide)</h2>
+  <p class="sub">The visual twin of the vowel-space map — a second, independent instrument. Axes are ratios normalized to your own face, so read the <i>clustering</i>, not the numbers. Colored by vowel tag.</p>
+  <canvas id="mouthmap" width="640" height="260"></canvas>
+</section>
+
+<p class="note"><b>Honest limits.</b> F1/F2 here come from peak-picking a smoothed spectrum — a genuine first-pass estimate, not clinical LPC, and it can confuse a strong harmonic for a formant on high or breathy notes. Read the <i>movement</i> and <i>clustering</i>, not the absolute Hz. And nasality stays this method's blind spot: the velum's signature is missing energy (anti-formants), which a spectrogram shows poorly — that axis wants a nasometer, not a mic.</p>
+
+<p class="note" style="border-left-color:var(--filter)"><b>What the camera can and can't see.</b> The mouth score reads only two visible dials — jaw <i>aperture</i> and lip <i>spread</i> — normalized to your face so it's relative, not absolute. Tongue frontness, lip protrusion (depth), and everything inside the tract stay invisible to a camera, exactly as nasality stays invisible to the mic. It's a <i>partial</i>, complementary hit-rate, not a fuller or "more correct" measurement — and it never grades your shape against a target.</p>
+
+<footer>Runs entirely in your browser — no audio or video leaves the device, nothing is uploaded. Face landmarks are computed on-device and discarded; only the two mouth ratios are kept with each frozen point. Points persist locally between sessions.</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var VOWELS = [
+    {v:"u", bright:0.00, refF1:320, refF2:800},
+    {v:"o", bright:0.25, refF1:460, refF2:850},
+    {v:"a", bright:0.50, refF1:700, refF2:1200},
+    {v:"e", bright:0.75, refF1:460, refF2:2000},
+    {v:"i", bright:1.00, refF1:270, refF2:2300}
+  ];
+  var activeVowel = VOWELS[4];
+
+  // palette helper
+  function hexToRgb(h){h=h.replace('#','');return[parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}
+  var SC=hexToRgb("6A5C90"), CH=hexToRgb("EDE0BE");
+  function vColor(b){var r=Math.round(SC[0]+(CH[0]-SC[0])*b),g=Math.round(SC[1]+(CH[1]-SC[1])*b),bl=Math.round(SC[2]+(CH[2]-SC[2])*b);return "rgb("+r+","+g+","+bl+")";}
+
+  // ---- vowel tag chips ----
+  var vchips=document.getElementById("vchips");
+  VOWELS.forEach(function(vw){
+    var b=document.createElement("button");
+    b.className="vchip"+(vw===activeVowel?" on":"");
+    b.type="button"; b.textContent=vw.v;
+    b.style.background=vColor(vw.bright);
+    b.style.color = vw.bright>0.52 ? "#1A1622" : "#ECE7DA";
+    b.addEventListener("click", function(){
+      activeVowel=vw;
+      document.querySelectorAll(".vchip").forEach(function(x){x.classList.remove("on");});
+      b.classList.add("on");
+    });
+    vchips.appendChild(b);
+  });
+
+  // ---- persisted points ----
+  // localStorage (JSON). Same key as the original artifact build; the record grew from
+  // {v,f1,f2} to {v,f1,f2,ap,wd} but that is additive — older points (no ap/wd) stay valid.
+  var STORE="formant:points:v1";
+  var points=[]; // {v, f1, f2, ap?, wd?}
+  function loadPts(){
+    try{ var r=localStorage.getItem(STORE); if(r) points=JSON.parse(r); }catch(e){}
+    drawPlot(); renderClusters(); refreshMouthMap();
+  }
+  function savePts(){ try{ localStorage.setItem(STORE, JSON.stringify(points)); }catch(e){} }
+
+  // ---- audio ----
+  var actx, analyser, srcNode, stream, floatBuf, byteBuf, running=false;
+  var recent=[]; // rolling linear-magnitude frames for measurement
+  var RECENT_MAX=14;
+  var scope=document.getElementById("scope"), sctx=scope.getContext("2d");
+  var startBtn=document.getElementById("startBtn"), freezeBtn=document.getElementById("freezeBtn"), statusEl=document.getElementById("status");
+  var MAXHZ=4000, binHz=0, maxBin=0;
+
+  startBtn.addEventListener("click", start);
+  async function start(){
+    if(running) return;
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    }catch(e){
+      statusEl.textContent="Microphone blocked or unavailable here. Download this file and open it directly in Chrome/Safari on your device, then allow mic access.";
+      statusEl.className="status err";
+      return;
+    }
+    actx = new (window.AudioContext||window.webkitAudioContext)();
+    srcNode = actx.createMediaStreamSource(stream);
+    analyser = actx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.4;
+    srcNode.connect(analyser);
+    floatBuf = new Float32Array(analyser.frequencyBinCount);
+    byteBuf = new Uint8Array(analyser.frequencyBinCount);
+    binHz = actx.sampleRate / analyser.fftSize;
+    maxBin = Math.min(analyser.frequencyBinCount, Math.floor(MAXHZ/binHz));
+    running=true;
+    startBtn.disabled=true; startBtn.textContent="Listening…";
+    freezeBtn.disabled=false;
+    statusEl.textContent="Live — sing a steady vowel on one pitch."; statusEl.className="status live";
+    loop();
+  }
+
+  function loop(){
+    if(!running) return;
+    requestAnimationFrame(loop);
+    analyser.getByteFrequencyData(byteBuf);
+    analyser.getFloatFrequencyData(floatBuf);
+    // store linear magnitudes for measurement
+    var lin=new Float32Array(maxBin);
+    for(var i=0;i<maxBin;i++){ lin[i]=Math.pow(10, floatBuf[i]/20); }
+    recent.push(lin); if(recent.length>RECENT_MAX) recent.shift();
+    paintColumn();
+  }
+
+  function paintColumn(){
+    var W=scope.width, H=scope.height;
+    sctx.drawImage(scope, -1, 0); // scroll left
+    for(var y=0;y<H;y++){
+      var frac = 1 - y/H;            // top = high freq
+      var bin = Math.floor(frac*maxBin);
+      var v = byteBuf[bin]/255;       // 0..1
+      sctx.fillStyle = heat(v);
+      sctx.fillRect(W-1, y, 1, 1);
+    }
+  }
+  function heat(v){
+    // dark plum -> violet -> amber -> cream
+    if(v<0.02) return "#0C0B12";
+    var stops=[[12,11,18],[60,40,90],[169,139,224],[244,185,66],[237,224,190]];
+    var t=v*(stops.length-1), i=Math.floor(t), f=t-i;
+    if(i>=stops.length-1){i=stops.length-2;f=1;}
+    var a=stops[i],b=stops[i+1];
+    return "rgb("+Math.round(a[0]+(b[0]-a[0])*f)+","+Math.round(a[1]+(b[1]-a[1])*f)+","+Math.round(a[2]+(b[2]-a[2])*f)+")";
+  }
+
+  // ---- freeze & measure ----
+  freezeBtn.addEventListener("click", function(){
+    if(!running || recent.length===0) return;
+    var avg=new Float32Array(maxBin);
+    for(var f=0;f<recent.length;f++){ for(var i=0;i<maxBin;i++) avg[i]+=recent[f][i]; }
+    for(var i=0;i<maxBin;i++) avg[i]/=recent.length;
+    // smooth (moving avg over bins)
+    var sm=new Float32Array(maxBin), w=2;
+    for(var i=0;i<maxBin;i++){var s=0,n=0;for(var k=-w;k<=w;k++){var j=i+k;if(j>=0&&j<maxBin){s+=avg[j];n++;}}sm[i]=s/n;}
+    var f1=pickPeak(sm, 250, 1000);
+    var f2=pickPeak(sm, Math.max(1000, f1+180), 2900);
+    var readf=document.getElementById("readf");
+    if(f1&&f2){
+      readf.innerHTML='<span>F1</span> <b>'+Math.round(f1)+'</b> Hz &nbsp; <span>F2</span> <b>'+Math.round(f2)+'</b> Hz';
+      // second instrument: if the camera is running, sample the averaged mouth shape too.
+      var mouth = (window.MouthScope && window.MouthScope.active()) ? window.MouthScope.sample() : null;
+      var pt = {v:activeVowel.v, f1:f1, f2:f2};
+      if(mouth){ pt.ap=mouth.ap; pt.wd=mouth.wd; }
+      points.push(pt);
+      savePts(); drawPlot(); renderClusters(); refreshMouthMap();
+      flash();
+    }else{
+      readf.innerHTML='<span>no clear formants — hold the vowel steadier</span>';
+    }
+  });
+
+  function pickPeak(mag, loHz, hiHz){
+    var lo=Math.max(1,Math.floor(loHz/binHz)), hi=Math.min(maxBin-2, Math.floor(hiHz/binHz));
+    var best=-1, bestV=0;
+    for(var i=lo;i<=hi;i++){
+      if(mag[i]>mag[i-1] && mag[i]>=mag[i+1] && mag[i]>bestV){ bestV=mag[i]; best=i; }
+    }
+    if(best<0){ // fallback: plain max in band
+      for(var i=lo;i<=hi;i++){ if(mag[i]>bestV){bestV=mag[i];best=i;} }
+    }
+    return best<0 ? 0 : best*binHz;
+  }
+  function flash(){ scope.style.boxShadow="0 0 0 2px var(--source)"; setTimeout(function(){scope.style.boxShadow="";},150); }
+
+  // ---- vowel-space plot ----
+  var plot=document.getElementById("plot"), pctx=plot.getContext("2d");
+  var F2LO=700, F2HI=2500, F1LO=200, F1HI=900;
+  function px(f2){ return plot.width*(1-(clamp(f2,F2LO,F2HI)-F2LO)/(F2HI-F2LO)); }
+  function py(f1){ return plot.height*((clamp(f1,F1LO,F1HI)-F1LO)/(F1HI-F1LO)); }
+  function clamp(x,a,b){return x<a?a:(x>b?b:x);}
+
+  function drawPlot(){
+    var W=plot.width,H=plot.height;
+    pctx.clearRect(0,0,W,H);
+    pctx.fillStyle="#141019"; pctx.fillRect(0,0,W,H);
+    // grid
+    pctx.strokeStyle="rgba(255,255,255,.05)"; pctx.lineWidth=1;
+    for(var gx=0;gx<=4;gx++){var x=W*gx/4;pctx.beginPath();pctx.moveTo(x,0);pctx.lineTo(x,H);pctx.stroke();}
+    for(var gy=0;gy<=3;gy++){var y=H*gy/3;pctx.beginPath();pctx.moveTo(0,y);pctx.lineTo(W,y);pctx.stroke();}
+    // axis labels
+    pctx.fillStyle="#6B6879"; pctx.font="10px 'IBM Plex Mono',monospace";
+    pctx.fillText("← F2  front / bright", 8, 14);
+    pctx.fillText("F1  open ↓", 8, H-8);
+    // reference ghosts
+    VOWELS.forEach(function(vw){
+      var x=px(vw.refF2), y=py(vw.refF1);
+      pctx.beginPath(); pctx.arc(x,y,13,0,6.2832);
+      pctx.strokeStyle=vColor(vw.bright); pctx.globalAlpha=.4; pctx.lineWidth=1.5; pctx.stroke(); pctx.globalAlpha=1;
+      pctx.fillStyle=vColor(vw.bright); pctx.globalAlpha=.5;
+      pctx.font="13px 'IBM Plex Mono',monospace"; pctx.textAlign="center"; pctx.textBaseline="middle";
+      pctx.fillText(vw.v, x, y); pctx.globalAlpha=1; pctx.textAlign="left"; pctx.textBaseline="alphabetic";
+    });
+    // user points
+    points.forEach(function(p){
+      var vw=vowelByName(p.v); var x=px(p.f2), y=py(p.f1);
+      pctx.beginPath(); pctx.arc(x,y,3.5,0,6.2832);
+      pctx.fillStyle=vColor(vw?vw.bright:0.5); pctx.fill();
+      pctx.strokeStyle="rgba(0,0,0,.4)"; pctx.lineWidth=1; pctx.stroke();
+    });
+  }
+  function vowelByName(n){for(var i=0;i<VOWELS.length;i++)if(VOWELS[i].v===n)return VOWELS[i];return null;}
+
+  // ---- mouth-shape map (visual twin of the vowel-space plot) ----
+  // Axes are normalized ratios (mouth measure ÷ eye-span), so they're person-relative:
+  // read cluster tightness, not absolute values — same ethos as the acoustic side.
+  var AP_LO=0.0, AP_HI=0.7, WD_LO=0.4, WD_HI=1.2;
+  function mpx(wd){ var m=mouthMap; return m.width*((clamp(wd,WD_LO,WD_HI)-WD_LO)/(WD_HI-WD_LO)); }   // wide → right
+  function mpy(ap){ var m=mouthMap; return m.height*(1-(clamp(ap,AP_LO,AP_HI)-AP_LO)/(AP_HI-AP_LO)); } // open → down
+  var mouthMap=document.getElementById("mouthmap"), mmctx=mouthMap?mouthMap.getContext("2d"):null;
+  function drawMouthMap(){
+    if(!mmctx) return;
+    var W=mouthMap.width,H=mouthMap.height;
+    mmctx.clearRect(0,0,W,H);
+    mmctx.fillStyle="#141019"; mmctx.fillRect(0,0,W,H);
+    mmctx.strokeStyle="rgba(255,255,255,.05)"; mmctx.lineWidth=1;
+    for(var gx=0;gx<=4;gx++){var x=W*gx/4;mmctx.beginPath();mmctx.moveTo(x,0);mmctx.lineTo(x,H);mmctx.stroke();}
+    for(var gy=0;gy<=3;gy++){var y=H*gy/3;mmctx.beginPath();mmctx.moveTo(0,y);mmctx.lineTo(W,y);mmctx.stroke();}
+    mmctx.fillStyle="#6B6879"; mmctx.font="10px 'IBM Plex Mono',monospace";
+    mmctx.fillText("wide / spread →", W-118, 14);
+    mmctx.fillText("open ↓", 8, H-8);
+    // points that carry mouth data, colored by their vowel tag
+    points.forEach(function(p){
+      if(typeof p.ap!=="number"||typeof p.wd!=="number") return;
+      var vw=vowelByName(p.v); var x=mpx(p.wd), y=mpy(p.ap);
+      mmctx.beginPath(); mmctx.arc(x,y,3.5,0,6.2832);
+      mmctx.fillStyle=vColor(vw?vw.bright:0.5); mmctx.fill();
+      mmctx.strokeStyle="rgba(0,0,0,.4)"; mmctx.lineWidth=1; mmctx.stroke();
+    });
+  }
+  function hasMouthData(){ for(var i=0;i<points.length;i++){ if(typeof points[i].ap==="number") return true; } return false; }
+  function refreshMouthMap(){
+    var card=document.getElementById("mouthcard");
+    if(!card) return;
+    if(hasMouthData()){ card.style.display=""; drawMouthMap(); }
+    else { card.style.display="none"; }
+  }
+
+  // ---- clusters ----
+  function renderClusters(){
+    var el=document.getElementById("clusters");
+    var groups={};
+    points.forEach(function(p){ (groups[p.v]=groups[p.v]||[]).push(p); });
+    var keys=Object.keys(groups);
+    if(keys.length===0){ el.innerHTML='<p style="color:var(--ink-faint);font-size:13px;margin:0">No points yet. Freeze a tagged vowel to begin.</p>'; return; }
+    // order by vowel table
+    var ordered=VOWELS.filter(function(vw){return groups[vw.v];});
+    el.innerHTML="";
+    ordered.forEach(function(vw){
+      var g=groups[vw.v];
+      var mf1=mean(g.map(function(p){return p.f1;})), mf2=mean(g.map(function(p){return p.f2;}));
+      var sd1=std(g.map(function(p){return p.f1;}),mf1), sd2=std(g.map(function(p){return p.f2;}),mf2);
+      var spread=Math.round(Math.sqrt(sd1*sd1+sd2*sd2));
+      // visual reproducibility: same spread math over the normalized mouth descriptor,
+      // for the subset of this vowel's points that carry camera data.
+      var gv=g.filter(function(p){return typeof p.ap==="number" && typeof p.wd==="number";});
+      var mouthStr="";
+      if(gv.length>=2){
+        var ma=mean(gv.map(function(p){return p.ap;})), mw=mean(gv.map(function(p){return p.wd;}));
+        var sa=std(gv.map(function(p){return p.ap;}),ma), sw=std(gv.map(function(p){return p.wd;}),mw);
+        var vspread=Math.sqrt(sa*sa+sw*sw);
+        mouthStr=' &nbsp; <span style="color:var(--filter)">mouth <b style="color:var(--filter)">±'+vspread.toFixed(3)+'</b></span>';
+      }
+      var d=document.createElement("div"); d.className="crow";
+      d.innerHTML='<span class="cv" style="color:'+vColor(vw.bright)+'">'+vw.v+' <span style="color:var(--ink-faint)">×'+g.length+'</span></span>'+
+                  '<span class="cs">F1 '+Math.round(mf1)+' · F2 '+Math.round(mf2)+' &nbsp; spread <b>±'+spread+'</b>'+mouthStr+'</span>';
+      el.appendChild(d);
+    });
+  }
+  function mean(a){return a.reduce(function(x,y){return x+y;},0)/a.length;}
+  function std(a,m){if(a.length<2)return 0;return Math.sqrt(a.reduce(function(x,y){return x+(y-m)*(y-m);},0)/(a.length-1));}
+
+  document.getElementById("clearActive").addEventListener("click", function(){
+    points=points.filter(function(p){return p.v!==activeVowel.v;});
+    savePts(); drawPlot(); renderClusters(); refreshMouthMap();
+  });
+  document.getElementById("clearAll").addEventListener("click", function(){
+    points=[]; savePts(); drawPlot(); renderClusters(); refreshMouthMap();
+  });
+
+  loadPts();
+})();
+</script>
+
+<script type="module">
+/* Second instrument: on-device mouth-shape capture via MediaPipe FaceLandmarker.
+   Everything here is vendored and runs locally — no video, frames, or landmarks leave
+   the device. This module owns the camera button entirely and exposes only a tiny read
+   API (window.MouthScope) that the acoustic code samples at freeze time. */
+import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundle.mjs";
+
+(function(){
+  "use strict";
+  var camBtn=document.getElementById("camBtn");
+  var camwrap=document.getElementById("camwrap");
+  var hint=document.getElementById("camHint");
+  var video=document.getElementById("camVideo");
+  var overlay=document.getElementById("camOverlay"), octx=overlay.getContext("2d");
+  var statusEl=document.getElementById("status");
+
+  // face-mesh landmark indices
+  var UP=13, LO=14, LC=61, RC=291, EYE_L=33, EYE_R=263;
+  var LIP_DOTS=[13,14,61,291,0,17,37,267,39,269]; // light overlay set
+
+  var landmarker=null, stream=null, running=false, haveFace=false;
+  var buf=[], BUF_MAX=14; // rolling {ap,wd}, mirrors the audio window
+
+  window.MouthScope={
+    active:function(){ return running && haveFace && buf.length>0; },
+    sample:function(){
+      if(!buf.length) return null;
+      var a=0,w=0; for(var i=0;i<buf.length;i++){ a+=buf[i].ap; w+=buf[i].wd; }
+      return { ap:a/buf.length, wd:w/buf.length };
+    }
+  };
+
+  function dist(p,q,W,H){ var dx=(p.x-q.x)*W, dy=(p.y-q.y)*H; return Math.hypot(dx,dy); }
+
+  function setHint(msg,cls){ if(hint) hint.innerHTML=msg; if(cls==="err"&&statusEl){ /* leave mic status intact */ } }
+
+  camBtn.addEventListener("click", function(){ if(running) stop(); else enable(); });
+
+  async function enable(){
+    camBtn.disabled=true; camBtn.textContent="Starting camera…";
+    try{
+      if(!landmarker){
+        var fileset=await FilesetResolver.forVisionTasks("./vendor/mediapipe/wasm");
+        landmarker=await FaceLandmarker.createFromOptions(fileset,{
+          baseOptions:{ modelAssetPath:"./models/face_landmarker.task" },
+          runningMode:"VIDEO", numFaces:1
+        });
+      }
+    }catch(e){
+      camBtn.disabled=false; camBtn.textContent="Enable camera (optional)";
+      setHint('<b style="color:var(--word)">Face model failed to load.</b> The vendored MediaPipe files may be missing. The microphone instrument still works on its own.');
+      return;
+    }
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({video:{width:320,height:240,facingMode:"user"}});
+    }catch(e){
+      camBtn.disabled=false; camBtn.textContent="Enable camera (optional)";
+      setHint('<b style="color:var(--word)">Camera blocked or unavailable.</b> This feature is optional — the microphone instrument works without it. If you meant to allow it, check the browser’s camera permission.');
+      return;
+    }
+    video.srcObject=stream;
+    await video.play();
+    running=true; haveFace=false; buf=[];
+    camwrap.classList.add("on");
+    camBtn.disabled=false; camBtn.textContent="Disable camera";
+    setHint('<b>Second instrument live.</b> Keep your face framed and lit. On <i>Freeze</i>, your averaged mouth shape is stored with the vowel — nothing is uploaded.');
+    loop();
+  }
+
+  function stop(){
+    running=false; haveFace=false; buf=[];
+    if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
+    video.srcObject=null;
+    camwrap.classList.remove("on");
+    camBtn.textContent="Enable camera (optional)";
+    octx.clearRect(0,0,overlay.width,overlay.height);
+  }
+
+  function loop(){
+    if(!running) return;
+    requestAnimationFrame(loop);
+    if(video.readyState<2) return;
+    var W=video.videoWidth||320, H=video.videoHeight||240;
+    var res;
+    try{ res=landmarker.detectForVideo(video, performance.now()); }catch(e){ return; }
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    if(!res || !res.faceLandmarks || !res.faceLandmarks.length){ haveFace=false; return; }
+    var lm=res.faceLandmarks[0];
+    var eye=dist(lm[EYE_L],lm[EYE_R],W,H);
+    if(eye<1){ haveFace=false; return; }
+    var ap=dist(lm[UP],lm[LO],W,H)/eye;
+    var wd=dist(lm[LC],lm[RC],W,H)/eye;
+    haveFace=true;
+    buf.push({ap:ap,wd:wd}); if(buf.length>BUF_MAX) buf.shift();
+    // light lip/eye overlay in filter teal
+    octx.fillStyle="#57C8BE";
+    var ow=overlay.width, oh=overlay.height;
+    for(var i=0;i<LIP_DOTS.length;i++){ var p=lm[LIP_DOTS[i]]; if(!p) continue; octx.beginPath(); octx.arc(p.x*ow,p.y*oh,1.6,0,6.2832); octx.fill(); }
+  }
+})();
+</script>
+</body>
+</html>
