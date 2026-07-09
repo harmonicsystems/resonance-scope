@@ -47,6 +47,25 @@
   .camhint{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-faint);max-width:46ch}
   .camhint b{color:var(--filter);font-weight:500}
 
+  .calbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+  .calstatus{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-faint)}
+  .calpanel{background:var(--panel-2);border:1px solid var(--hair-strong);border-radius:2px;padding:12px 14px;margin:0 0 12px}
+  .caltarget{display:flex;align-items:baseline;gap:12px;margin-bottom:9px}
+  .calipa{font-size:26px;font-weight:600;color:var(--filter);line-height:1}
+  .calword{font-size:13px;color:var(--ink-dim)}
+  .calmeter{height:8px;background:#0C0B12;border:1px solid var(--hair);border-radius:20px;overflow:hidden;margin-bottom:9px}
+  .calmeterfill{height:100%;width:0;background:var(--filter)}
+  .calsteps{display:flex;gap:6px;margin-bottom:11px}
+  .calstep{font-family:"IBM Plex Mono",monospace;font-size:12px;padding:3px 10px;border:1px solid var(--hair-strong);border-radius:2px;color:var(--ink-faint)}
+  .calstep.active{color:var(--filter);border-color:var(--filter)}
+  .calstep.done{color:var(--ink-dim);border-color:var(--hair)}
+  .calrow{display:flex;gap:8px}
+  .calreadouts .crow2{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:8px 0;border-top:1px solid var(--hair)}
+  .calreadouts .crow2:first-child{border-top:0}
+  .calreadouts .ck{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-dim)}
+  .calreadouts .cvv{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--filter);font-weight:600}
+  .calreadouts .cd{font-size:11.5px;color:var(--ink-faint);margin-left:auto;margin-right:10px}
+
   .scopewrap{margin-top:16px;position:relative;background:#0C0B12;border:1px solid var(--hair);border-radius:3px;overflow:hidden}
   #scope{display:block;width:100%;height:260px}
   .scopeaxis{position:absolute;left:6px;top:6px;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-faint);pointer-events:none}
@@ -86,6 +105,61 @@
   footer{margin-top:24px;padding-top:16px;border-top:1px solid var(--hair);font-size:12px;color:var(--ink-faint)}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+<script>
+/* Debug harness — LOCAL ONLY (console + on-screen HUD). Never sends anything off-device;
+   that would be telemetry, which this project forbids. Enable with ?debug=1 or
+   localStorage['rs:debug']='1'. Ships completely silent by default. */
+(function(){
+  "use strict";
+  var DEBUG=false;
+  try{ DEBUG = /[?&]debug=1/.test(location.search) || localStorage.getItem('rs:debug')==='1'; }catch(e){}
+  var RS = window.RS = window.RS || {};
+  RS.debug = DEBUG;
+  RS.state = {};
+  RS.log  = DEBUG ? function(tag){ console.debug.apply(console,['%c[rs:'+tag+']','color:#57C8BE'].concat([].slice.call(arguments,1))); } : function(){};
+  RS.warn = function(tag){ console.warn.apply(console,['[rs:'+tag+']'].concat([].slice.call(arguments,1))); };
+  RS.set  = DEBUG ? function(section,obj){ var s=RS.state[section]||(RS.state[section]={}); for(var k in obj){ s[k]=obj[k]; } } : function(){};
+  RS.snapshot = function(){ try{ return JSON.parse(JSON.stringify(RS.state)); }catch(e){ return RS.state; } };
+
+  if(!DEBUG) return;
+
+  // ---- egress guard: the on-device invariant, made watchable ----
+  // Same-origin requests (our own vendored MediaPipe assets) pass silently; any CROSS-origin
+  // fetch/XHR is warned + blocked, and beacons/sockets are blocked outright. Nothing in this
+  // app calls out, so this should stay silent forever — if it fires, something is exfiltrating.
+  var cross=function(u){ try{ return new URL(u, location.href).origin!==location.origin; }catch(e){ return false; } };
+  var yell=function(kind,tgt){ RS.warn('egress','BLOCKED '+kind+' → '+tgt+' — audio/video must never leave the device'); };
+  try{
+    var _fetch=window.fetch;
+    if(_fetch) window.fetch=function(u){ var t=(u&&u.url)||u; if(cross(t)){ yell('fetch',t); return Promise.reject(new Error('[rs:egress] cross-origin fetch blocked')); } return _fetch.apply(window,arguments); };
+    var _open=XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open=function(m,u){ this.__rsCross=cross(u); if(this.__rsCross) yell('XHR',u); return _open.apply(this,arguments); };
+    var _send=XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send=function(){ if(this.__rsCross) throw new Error('[rs:egress] cross-origin XHR blocked'); return _send.apply(this,arguments); };
+    if(navigator.sendBeacon) navigator.sendBeacon=function(u){ yell('sendBeacon',u); return false; };
+    if(window.WebSocket) window.WebSocket=function(u){ yell('WebSocket',u); throw new Error('[rs:egress] WebSocket blocked'); };
+    RS.log('egress','guard armed — cross-origin fetch/XHR blocked, beacons/sockets off');
+  }catch(e){ RS.warn('egress','guard setup failed', e); }
+
+  // ---- on-screen HUD (built once the DOM exists) ----
+  var build=function(){
+    var el=document.createElement('div');
+    el.id='rsHud';
+    el.style.cssText='position:fixed;right:10px;bottom:10px;z-index:9999;pointer-events:none;'
+      +'font:11px/1.5 "IBM Plex Mono",monospace;color:#57C8BE;background:rgba(12,11,18,.86);'
+      +'border:1px solid rgba(87,200,190,.35);border-radius:3px;padding:8px 10px;white-space:pre;'
+      +'max-width:260px;letter-spacing:.02em';
+    document.body.appendChild(el);
+    var render=function(){
+      var s=RS.state, out=[];
+      for(var sec in s){ var o=s[sec], parts=[]; for(var k in o){ var v=o[k]; if(typeof v==='number' && v%1) v=v.toFixed(3); parts.push(k+':'+v); } out.push(sec.toUpperCase()+' '+parts.join(' ')); }
+      el.textContent='rs:debug — RS.snapshot() in console\n'+(out.join('\n')||'(waiting for signal)');
+    };
+    setInterval(render, 200); render();
+  };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', build); else build();
+})();
+</script>
 </head>
 <body>
 <header>
@@ -127,6 +201,20 @@
   <section class="card">
     <h2>Vowel-space map (F1 × F2)</h2>
     <p class="sub">Ghosts = rough reference targets. Your frozen points accumulate and cluster. Front/bright is left; open is down.</p>
+    <div class="calbar">
+      <button class="mini" id="calBtn">Calibrate to me</button>
+      <span class="calstatus" id="calStatus">Uncalibrated — showing raw Hz</span>
+      <button class="mini" id="viewToggle" hidden>Show raw Hz</button>
+    </div>
+    <div class="calpanel" id="calPanel" hidden>
+      <div class="caltarget"><span class="calipa mono" id="calIpa">[i]</span><span class="calword" id="calWord">sustain “ee” as in see / heed</span></div>
+      <div class="calmeter"><div class="calmeterfill" id="calMeter"></div></div>
+      <div class="calsteps" id="calSteps"></div>
+      <div class="calrow">
+        <button class="mini" id="calLock" disabled>Lock [i]</button>
+        <button class="mini" id="calCancel">Cancel</button>
+      </div>
+    </div>
     <canvas id="plot" width="640" height="300"></canvas>
     <div class="plotctrls">
       <button class="mini" id="clearActive">Clear tagged vowel</button>
@@ -146,15 +234,25 @@
   <canvas id="mouthmap" width="640" height="260"></canvas>
 </section>
 
+<section class="card" id="calcard" style="display:none;margin-top:16px">
+  <h2 style="color:var(--filter)">Calibration read-outs</h2>
+  <p class="sub">Descriptive characterization of your own vowel space, from your /i a u/ anchors — <b style="color:var(--ink-dim)">not diagnostic</b>.</p>
+  <div id="calreadouts" class="calreadouts"></div>
+</section>
+
 <p class="note"><b>Honest limits.</b> F1/F2 here come from peak-picking a smoothed spectrum — a genuine first-pass estimate, not clinical LPC, and it can confuse a strong harmonic for a formant on high or breathy notes. Read the <i>movement</i> and <i>clustering</i>, not the absolute Hz. And nasality stays this method's blind spot: the velum's signature is missing energy (anti-formants), which a spectrogram shows poorly — that axis wants a nasometer, not a mic.</p>
 
 <p class="note" style="border-left-color:var(--filter)"><b>What the camera can and can't see.</b> The mouth score reads only two visible dials — jaw <i>aperture</i> and lip <i>spread</i> — normalized to your face so it's relative, not absolute. Tongue frontness, lip protrusion (depth), and everything inside the tract stay invisible to a camera, exactly as nasality stays invisible to the mic. It's a <i>partial</i>, complementary hit-rate, not a fuller or "more correct" measurement — and it never grades your shape against a target.</p>
+
+<p class="note" style="border-left-color:var(--filter)"><b>About calibration.</b> Anchoring to your own /i a u/ turns raw Hz into a position <i>inside your own vowel space</i> — that's what makes clustering stable session-to-session and comparable across different vocal tracts. Two honest caveats: the normalized space is only as good as the anchors, so capture each corner while the steadiness meter is high; and normalization fixes the <i>scale</i>, not the underlying estimate — F1/F2 are still peak-picked, not LPC. The read-outs (VSA, centralization) describe <i>your own</i> space and are never a diagnosis.</p>
 
 <footer>Runs entirely in your browser — no audio or video leaves the device, nothing is uploaded. Face landmarks are computed on-device and discarded; only the two mouth ratios are kept with each frozen point. Points persist locally between sessions.</footer>
 
 <script>
 (function(){
   "use strict";
+
+  var RS = window.RS || {log:function(){},warn:function(){},set:function(){},debug:false};
 
   var VOWELS = [
     {v:"u", bright:0.00, refF1:320, refF2:800},
@@ -192,20 +290,21 @@
   var STORE="formant:points:v1";
   var points=[]; // {v, f1, f2, ap?, wd?}
   function loadPts(){
-    try{ var r=localStorage.getItem(STORE); if(r) points=JSON.parse(r); }catch(e){}
-    drawPlot(); renderClusters(); refreshMouthMap();
+    try{ var r=localStorage.getItem(STORE); if(r) points=JSON.parse(r); RS.log('store','loaded',points.length,'points'); }
+    catch(e){ RS.warn('store','localStorage read failed — persistence disabled', e); }
+    drawPlot(); renderClusters(); refreshMouthMap(); RS.set('store',{points:points.length});
   }
-  function savePts(){ try{ localStorage.setItem(STORE, JSON.stringify(points)); }catch(e){} }
+  function savePts(){ try{ localStorage.setItem(STORE, JSON.stringify(points)); RS.set('store',{points:points.length}); }catch(e){ RS.warn('store','localStorage write failed', e); } }
 
   // ---- audio ----
-  var actx, analyser, srcNode, stream, floatBuf, byteBuf, running=false;
+  var actx, analyser, srcNode, stream, floatBuf, byteBuf, running=false, lastFrameT=0, fpsSmoothed=0;
   var recent=[]; // rolling linear-magnitude frames for measurement
   var RECENT_MAX=14;
   var scope=document.getElementById("scope"), sctx=scope.getContext("2d");
   var startBtn=document.getElementById("startBtn"), freezeBtn=document.getElementById("freezeBtn"), statusEl=document.getElementById("status");
   var MAXHZ=4000, binHz=0, maxBin=0;
 
-  startBtn.addEventListener("click", start);
+  startBtn.addEventListener("click", function(){ running ? stopMic() : start(); });
   async function start(){
     if(running) return;
     try{
@@ -213,6 +312,7 @@
     }catch(e){
       statusEl.textContent="Microphone blocked or unavailable here. Download this file and open it directly in Chrome/Safari on your device, then allow mic access.";
       statusEl.className="status err";
+      RS.warn('audio','getUserMedia failed', e);
       return;
     }
     actx = new (window.AudioContext||window.webkitAudioContext)();
@@ -225,11 +325,25 @@
     byteBuf = new Uint8Array(analyser.frequencyBinCount);
     binHz = actx.sampleRate / analyser.fftSize;
     maxBin = Math.min(analyser.frequencyBinCount, Math.floor(MAXHZ/binHz));
-    running=true;
-    startBtn.disabled=true; startBtn.textContent="Listening…";
+    running=true; lastFrameT=0; fpsSmoothed=0;
+    startBtn.textContent="Stop microphone";
     freezeBtn.disabled=false;
     statusEl.textContent="Live — sing a steady vowel on one pitch."; statusEl.className="status live";
+    RS.log('audio','started',{sampleRate:actx.sampleRate,fftSize:analyser.fftSize,binHz:Math.round(binHz*100)/100,maxBin:maxBin});
+    RS.set('audio',{sr:actx.sampleRate,binHz:Math.round(binHz*100)/100,maxBin:maxBin,running:true});
     loop();
+  }
+  function stopMic(){
+    running=false;
+    if(calMode) cancelCalibration();
+    if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
+    if(actx){ try{ actx.close(); }catch(e){} actx=null; }
+    recent=[];
+    startBtn.textContent="Start microphone";
+    freezeBtn.disabled=true;
+    statusEl.textContent="Microphone off."; statusEl.className="status";
+    RS.log('audio','stopped');
+    RS.set('audio',{running:false,fps:0,level:0});
   }
 
   function loop(){
@@ -238,10 +352,17 @@
     analyser.getByteFrequencyData(byteBuf);
     analyser.getFloatFrequencyData(floatBuf);
     // store linear magnitudes for measurement
-    var lin=new Float32Array(maxBin);
-    for(var i=0;i<maxBin;i++){ lin[i]=Math.pow(10, floatBuf[i]/20); }
+    var lin=new Float32Array(maxBin), sum=0;
+    for(var i=0;i<maxBin;i++){ lin[i]=Math.pow(10, floatBuf[i]/20); sum+=byteBuf[i]; }
     recent.push(lin); if(recent.length>RECENT_MAX) recent.shift();
     paintColumn();
+    if(calMode) calTick();
+    if(RS.debug){
+      var now=performance.now();
+      if(lastFrameT){ var inst=1000/(now-lastFrameT); fpsSmoothed=fpsSmoothed?fpsSmoothed*0.9+inst*0.1:inst; }
+      lastFrameT=now;
+      RS.set('audio',{running:true,fps:Math.round(fpsSmoothed||0),level:Math.round(sum/maxBin/255*100),frames:recent.length});
+    }
   }
 
   function paintColumn(){
@@ -265,17 +386,27 @@
     return "rgb("+Math.round(a[0]+(b[0]-a[0])*f)+","+Math.round(a[1]+(b[1]-a[1])*f)+","+Math.round(a[2]+(b[2]-a[2])*f)+")";
   }
 
-  // ---- freeze & measure ----
-  freezeBtn.addEventListener("click", function(){
-    if(!running || recent.length===0) return;
+  // ---- measure: average the rolling window, smooth, peak-pick F1/F2 ----
+  // Extracted so calibration can run the same instrument continuously (once per frame).
+  function measureNow(){
+    if(recent.length===0) return null;
     var avg=new Float32Array(maxBin);
     for(var f=0;f<recent.length;f++){ for(var i=0;i<maxBin;i++) avg[i]+=recent[f][i]; }
     for(var i=0;i<maxBin;i++) avg[i]/=recent.length;
     // smooth (moving avg over bins)
     var sm=new Float32Array(maxBin), w=2;
     for(var i=0;i<maxBin;i++){var s=0,n=0;for(var k=-w;k<=w;k++){var j=i+k;if(j>=0&&j<maxBin){s+=avg[j];n++;}}sm[i]=s/n;}
-    var f1=pickPeak(sm, 250, 1000);
-    var f2=pickPeak(sm, Math.max(1000, f1+180), 2900);
+    var i1={fallback:false}, i2={fallback:false};
+    var f1=pickPeak(sm, 250, 1000, i1);
+    var f2=pickPeak(sm, Math.max(1000, f1+180), 2900, i2);
+    return {f1:f1,f2:f2,i1:i1,i2:i2};
+  }
+
+  // ---- freeze & measure ----
+  freezeBtn.addEventListener("click", function(){
+    if(!running) return;
+    var m=measureNow(); if(!m) return;
+    var f1=m.f1, f2=m.f2, i1=m.i1, i2=m.i2;
     var readf=document.getElementById("readf");
     if(f1&&f2){
       readf.innerHTML='<span>F1</span> <b>'+Math.round(f1)+'</b> Hz &nbsp; <span>F2</span> <b>'+Math.round(f2)+'</b> Hz';
@@ -286,18 +417,23 @@
       points.push(pt);
       savePts(); drawPlot(); renderClusters(); refreshMouthMap();
       flash();
+      // measurement provenance: fallback:true means no local spectral peak was found in the
+      // band (plain-max was used) — a low-confidence estimate worth eyeballing.
+      RS.log('freeze','measured',{v:activeVowel.v,f1:Math.round(f1),f2:Math.round(f2),framesAveraged:recent.length,f1Fallback:i1.fallback,f2Fallback:i2.fallback,mouth:mouth});
     }else{
       readf.innerHTML='<span>no clear formants — hold the vowel steadier</span>';
+      RS.log('freeze','no clear formants',{f1:Math.round(f1||0),f2:Math.round(f2||0),framesAveraged:recent.length});
     }
   });
 
-  function pickPeak(mag, loHz, hiHz){
+  function pickPeak(mag, loHz, hiHz, info){
     var lo=Math.max(1,Math.floor(loHz/binHz)), hi=Math.min(maxBin-2, Math.floor(hiHz/binHz));
     var best=-1, bestV=0;
     for(var i=lo;i<=hi;i++){
       if(mag[i]>mag[i-1] && mag[i]>=mag[i+1] && mag[i]>bestV){ bestV=mag[i]; best=i; }
     }
-    if(best<0){ // fallback: plain max in band
+    if(best<0){ // fallback: plain max in band (no local peak — low confidence)
+      if(info) info.fallback=true;
       for(var i=lo;i<=hi;i++){ if(mag[i]>bestV){bestV=mag[i];best=i;} }
     }
     return best<0 ? 0 : best*binHz;
@@ -312,6 +448,7 @@
   function clamp(x,a,b){return x<a?a:(x>b?b:x);}
 
   function drawPlot(){
+    if(useNorm()){ drawPlotNorm(); return; }
     var W=plot.width,H=plot.height;
     pctx.clearRect(0,0,W,H);
     pctx.fillStyle="#141019"; pctx.fillRect(0,0,W,H);
@@ -342,6 +479,41 @@
   }
   function vowelByName(n){for(var i=0;i<VOWELS.length;i++)if(VOWELS[i].v===n)return VOWELS[i];return null;}
 
+  // normalized (calibrated) plot space: value 0..1 with padding, front(1)→left, open(1)→down
+  var PAD=0.12;
+  function nx(v){ var f=(clamp(v,-PAD,1+PAD)+PAD)/(1+2*PAD); return plot.width*(1-f); }
+  function ny(v){ var f=(clamp(v,-PAD,1+PAD)+PAD)/(1+2*PAD); return plot.height*f; }
+  function drawPlotNorm(){
+    var W=plot.width,H=plot.height;
+    pctx.clearRect(0,0,W,H); pctx.fillStyle="#141019"; pctx.fillRect(0,0,W,H);
+    pctx.strokeStyle="rgba(255,255,255,.05)"; pctx.lineWidth=1;
+    for(var gx=0;gx<=4;gx++){var x=W*gx/4;pctx.beginPath();pctx.moveTo(x,0);pctx.lineTo(x,H);pctx.stroke();}
+    for(var gy=0;gy<=3;gy++){var y=H*gy/3;pctx.beginPath();pctx.moveTo(0,y);pctx.lineTo(W,y);pctx.stroke();}
+    pctx.fillStyle="#6B6879"; pctx.font="10px 'IBM Plex Mono',monospace";
+    pctx.fillText("← front", 8, 14); pctx.fillText("open ↓", 8, H-8);
+    pctx.textAlign="right"; pctx.fillStyle="#57C8BE"; pctx.fillText("your normalized vowel space", W-8, 14); pctx.textAlign="left";
+    // your i–a–u triangle + anchors (your own targets, replacing the generic ghosts)
+    var pos={};
+    CORNERS.forEach(function(c){ pos[c]={x:nx(n2(calib[c].f2)),y:ny(n1(calib[c].f1))}; });
+    pctx.beginPath(); pctx.moveTo(pos.i.x,pos.i.y); pctx.lineTo(pos.a.x,pos.a.y); pctx.lineTo(pos.u.x,pos.u.y); pctx.closePath();
+    pctx.strokeStyle="rgba(87,200,190,.30)"; pctx.lineWidth=1.5; pctx.stroke();
+    CORNERS.forEach(function(c){
+      var vw=vowelByName(c), P=pos[c];
+      pctx.beginPath(); pctx.arc(P.x,P.y,13,0,6.2832);
+      pctx.strokeStyle=vColor(vw?vw.bright:0.5); pctx.globalAlpha=.5; pctx.lineWidth=1.5; pctx.stroke(); pctx.globalAlpha=1;
+      pctx.fillStyle=vColor(vw?vw.bright:0.5); pctx.globalAlpha=.6;
+      pctx.font="13px 'IBM Plex Mono',monospace"; pctx.textAlign="center"; pctx.textBaseline="middle";
+      pctx.fillText(c,P.x,P.y); pctx.globalAlpha=1; pctx.textAlign="left"; pctx.textBaseline="alphabetic";
+    });
+    points.forEach(function(p){
+      var xn=n2(p.f2), yn=n1(p.f1); if(xn==null||yn==null) return;
+      var vw=vowelByName(p.v), x=nx(xn), y=ny(yn);
+      pctx.beginPath(); pctx.arc(x,y,3.5,0,6.2832);
+      pctx.fillStyle=vColor(vw?vw.bright:0.5); pctx.fill();
+      pctx.strokeStyle="rgba(0,0,0,.4)"; pctx.lineWidth=1; pctx.stroke();
+    });
+  }
+
   // ---- mouth-shape map (visual twin of the vowel-space plot) ----
   // Axes are normalized ratios (mouth measure ÷ eye-span), so they're person-relative:
   // read cluster tightness, not absolute values — same ethos as the acoustic side.
@@ -349,9 +521,12 @@
   function mpx(wd){ var m=mouthMap; return m.width*((clamp(wd,WD_LO,WD_HI)-WD_LO)/(WD_HI-WD_LO)); }   // wide → right
   function mpy(ap){ var m=mouthMap; return m.height*(1-(clamp(ap,AP_LO,AP_HI)-AP_LO)/(AP_HI-AP_LO)); } // open → down
   var mouthMap=document.getElementById("mouthmap"), mmctx=mouthMap?mouthMap.getContext("2d"):null;
+  // normalized (calibrated) mouth space: wide(1)→right, open(1)→down
+  function mnx(v){ return mouthMap.width*((clamp(v,-PAD,1+PAD)+PAD)/(1+2*PAD)); }
+  function mny(v){ return mouthMap.height*((clamp(v,-PAD,1+PAD)+PAD)/(1+2*PAD)); }
   function drawMouthMap(){
     if(!mmctx) return;
-    var W=mouthMap.width,H=mouthMap.height;
+    var W=mouthMap.width,H=mouthMap.height, norm=hasMouthCalib()&&viewNorm;
     mmctx.clearRect(0,0,W,H);
     mmctx.fillStyle="#141019"; mmctx.fillRect(0,0,W,H);
     mmctx.strokeStyle="rgba(255,255,255,.05)"; mmctx.lineWidth=1;
@@ -360,10 +535,27 @@
     mmctx.fillStyle="#6B6879"; mmctx.font="10px 'IBM Plex Mono',monospace";
     mmctx.fillText("wide / spread →", W-118, 14);
     mmctx.fillText("open ↓", 8, H-8);
+    if(norm){
+      // your i–a–u mouth triangle + anchors
+      var pos={};
+      CORNERS.forEach(function(c){ pos[c]={x:mnx(nwd(calib[c].wd)),y:mny(nap(calib[c].ap))}; });
+      mmctx.beginPath(); mmctx.moveTo(pos.i.x,pos.i.y); mmctx.lineTo(pos.a.x,pos.a.y); mmctx.lineTo(pos.u.x,pos.u.y); mmctx.closePath();
+      mmctx.strokeStyle="rgba(87,200,190,.30)"; mmctx.lineWidth=1.5; mmctx.stroke();
+      CORNERS.forEach(function(c){
+        var vw=vowelByName(c), P=pos[c];
+        mmctx.beginPath(); mmctx.arc(P.x,P.y,12,0,6.2832);
+        mmctx.strokeStyle=vColor(vw?vw.bright:0.5); mmctx.globalAlpha=.5; mmctx.lineWidth=1.5; mmctx.stroke(); mmctx.globalAlpha=1;
+        mmctx.fillStyle=vColor(vw?vw.bright:0.5); mmctx.globalAlpha=.6;
+        mmctx.font="12px 'IBM Plex Mono',monospace"; mmctx.textAlign="center"; mmctx.textBaseline="middle";
+        mmctx.fillText(c,P.x,P.y); mmctx.globalAlpha=1; mmctx.textAlign="left"; mmctx.textBaseline="alphabetic";
+      });
+    }
     // points that carry mouth data, colored by their vowel tag
     points.forEach(function(p){
       if(typeof p.ap!=="number"||typeof p.wd!=="number") return;
-      var vw=vowelByName(p.v); var x=mpx(p.wd), y=mpy(p.ap);
+      var vw=vowelByName(p.v), x, y;
+      if(norm){ var xn=nwd(p.wd), yn=nap(p.ap); if(xn==null||yn==null) return; x=mnx(xn); y=mny(yn); }
+      else { x=mpx(p.wd); y=mpy(p.ap); }
       mmctx.beginPath(); mmctx.arc(x,y,3.5,0,6.2832);
       mmctx.fillStyle=vColor(vw?vw.bright:0.5); mmctx.fill();
       mmctx.strokeStyle="rgba(0,0,0,.4)"; mmctx.lineWidth=1; mmctx.stroke();
@@ -373,7 +565,7 @@
   function refreshMouthMap(){
     var card=document.getElementById("mouthcard");
     if(!card) return;
-    if(hasMouthData()){ card.style.display=""; drawMouthMap(); }
+    if(hasMouthData()||hasMouthCalib()){ card.style.display=""; drawMouthMap(); }
     else { card.style.display="none"; }
   }
 
@@ -387,29 +579,163 @@
     // order by vowel table
     var ordered=VOWELS.filter(function(vw){return groups[vw.v];});
     el.innerHTML="";
+    var norm=useNorm();
     ordered.forEach(function(vw){
       var g=groups[vw.v];
       var mf1=mean(g.map(function(p){return p.f1;})), mf2=mean(g.map(function(p){return p.f2;}));
-      var sd1=std(g.map(function(p){return p.f1;}),mf1), sd2=std(g.map(function(p){return p.f2;}),mf2);
-      var spread=Math.round(Math.sqrt(sd1*sd1+sd2*sd2));
-      // visual reproducibility: same spread math over the normalized mouth descriptor,
-      // for the subset of this vowel's points that carry camera data.
+      // acoustic spread: normalized (% of your own range) when calibrated, else raw Hz
+      var spreadStr;
+      if(norm){
+        var a1=g.map(function(p){return n1(p.f1);}).filter(function(x){return x!=null;});
+        var a2=g.map(function(p){return n2(p.f2);}).filter(function(x){return x!=null;});
+        var sp=(a1.length>=2)?Math.sqrt(Math.pow(std(a1,mean(a1)),2)+Math.pow(std(a2,mean(a2)),2))*100:0;
+        spreadStr='spread <b>±'+sp.toFixed(1)+'%</b>';
+      } else {
+        var sd1=std(g.map(function(p){return p.f1;}),mf1), sd2=std(g.map(function(p){return p.f2;}),mf2);
+        spreadStr='spread <b>±'+Math.round(Math.sqrt(sd1*sd1+sd2*sd2))+'</b>';
+      }
+      // mouth reproducibility: normalized % when mouth-calibrated, else raw ratio units
       var gv=g.filter(function(p){return typeof p.ap==="number" && typeof p.wd==="number";});
       var mouthStr="";
       if(gv.length>=2){
-        var ma=mean(gv.map(function(p){return p.ap;})), mw=mean(gv.map(function(p){return p.wd;}));
-        var sa=std(gv.map(function(p){return p.ap;}),ma), sw=std(gv.map(function(p){return p.wd;}),mw);
-        var vspread=Math.sqrt(sa*sa+sw*sw);
-        mouthStr=' &nbsp; <span style="color:var(--filter)">mouth <b style="color:var(--filter)">±'+vspread.toFixed(3)+'</b></span>';
+        if(norm && hasMouthCalib()){
+          var na=gv.map(function(p){return nap(p.ap);}), nw=gv.map(function(p){return nwd(p.wd);});
+          var vs=Math.sqrt(Math.pow(std(na,mean(na)),2)+Math.pow(std(nw,mean(nw)),2))*100;
+          mouthStr=' &nbsp; <span style="color:var(--filter)">mouth <b style="color:var(--filter)">±'+vs.toFixed(1)+'%</b></span>';
+        } else {
+          var ma=mean(gv.map(function(p){return p.ap;})), mw=mean(gv.map(function(p){return p.wd;}));
+          var sa=std(gv.map(function(p){return p.ap;}),ma), sw=std(gv.map(function(p){return p.wd;}),mw);
+          mouthStr=' &nbsp; <span style="color:var(--filter)">mouth <b style="color:var(--filter)">±'+Math.sqrt(sa*sa+sw*sw).toFixed(3)+'</b></span>';
+        }
       }
       var d=document.createElement("div"); d.className="crow";
       d.innerHTML='<span class="cv" style="color:'+vColor(vw.bright)+'">'+vw.v+' <span style="color:var(--ink-faint)">×'+g.length+'</span></span>'+
-                  '<span class="cs">F1 '+Math.round(mf1)+' · F2 '+Math.round(mf2)+' &nbsp; spread <b>±'+spread+'</b>'+mouthStr+'</span>';
+                  '<span class="cs">F1 '+Math.round(mf1)+' · F2 '+Math.round(mf2)+' &nbsp; '+spreadStr+mouthStr+'</span>';
       el.appendChild(d);
     });
   }
   function mean(a){return a.reduce(function(x,y){return x+y;},0)/a.length;}
   function std(a,m){if(a.length<2)return 0;return Math.sqrt(a.reduce(function(x,y){return x+(y-m)*(y-m);},0)/(a.length-1));}
+
+  // ============================================================
+  //  Self-calibration — normalize to the user's own /i a u/.
+  //  Points stay raw Hz; anchors live under their own key; normalize at render time,
+  //  so recalibrating re-projects everything and the app still works uncalibrated.
+  // ============================================================
+  var CAL_STORE="formant:calib:v1";
+  var CORNERS=["i","a","u"];
+  var CAL_PROMPTS={ i:{ipa:"[i]",word:"“ee” as in see / heed"}, a:{ipa:"[ɑ]",word:"“ah” as in father / hot"}, u:{ipa:"[u]",word:"“oo” as in boo / who’d"} };
+  var calib={};       // {i:{f1,f2,ap?,wd?}, a:{…}, u:{…}}
+  var viewNorm=true;  // when calibrated, default to normalized; toggle to raw Hz
+
+  function loadCalib(){
+    try{ var r=localStorage.getItem(CAL_STORE); if(r){ calib=JSON.parse(r)||{}; } RS.log('calib','loaded',Object.keys(calib).join('')||'(none)'); }
+    catch(e){ RS.warn('calib','localStorage read failed', e); }
+  }
+  function saveCalib(){ try{ localStorage.setItem(CAL_STORE, JSON.stringify(calib)); }catch(e){ RS.warn('calib','write failed', e); } }
+  function isCalibrated(){ return !!(calib.i&&calib.a&&calib.u); }
+  function hasMouthCalib(){ return isCalibrated() && typeof calib.i.ap==="number" && typeof calib.a.ap==="number" && typeof calib.u.ap==="number"; }
+  function useNorm(){ return isCalibrated() && viewNorm; }
+
+  // range normalization from the personal anchors (null if degenerate → caller skips)
+  function n1(f1){ if(!isCalibrated())return null; var close=Math.min(calib.i.f1,calib.u.f1), d=calib.a.f1-close; return d>1?(f1-close)/d:null; } // 0 close … 1 open
+  function n2(f2){ if(!isCalibrated())return null; var back=calib.u.f2, d=calib.i.f2-back; return d>1?(f2-back)/d:null; }                       // 0 back … 1 front
+  function nap(ap){ if(!hasMouthCalib())return null; var close=Math.min(calib.i.ap,calib.u.ap), d=calib.a.ap-close; return d>0.001?(ap-close)/d:null; }
+  function nwd(wd){ if(!hasMouthCalib())return null; var back=calib.u.wd, d=calib.i.wd-back; return d>0.001?(wd-back)/d:null; }
+
+  // descriptive read-outs from /i a u/ — characterize your own space, NOT a diagnosis
+  function vsa(){ if(!isCalibrated())return null; var I=calib.i,A=calib.a,U=calib.u; return Math.abs(I.f1*(A.f2-U.f2)+A.f1*(U.f2-I.f2)+U.f1*(I.f2-A.f2))/2; }
+  function fcr(){ if(!isCalibrated())return null; var I=calib.i,A=calib.a,U=calib.u, dn=I.f2+A.f1; return dn>0?(U.f2+A.f2+I.f1+U.f1)/dn:null; }
+
+  function renderCalCard(){
+    var card=document.getElementById("calcard"), el=document.getElementById("calreadouts");
+    if(!card||!el) return;
+    if(!isCalibrated()){ card.style.display="none"; return; }
+    card.style.display="";
+    var area=vsa(), f=fcr();
+    function row(k,v,d){ return '<div class="crow2"><span class="ck">'+k+'</span><span class="cd">'+d+'</span><span class="cvv">'+v+'</span></div>'; }
+    el.innerHTML = row('VSA', Math.round(area).toLocaleString()+' Hz²', 'area of your i–a–u triangle') +
+                   row('FCR', f.toFixed(3), 'centralization — higher = more centralized');
+  }
+
+  function refreshCalUI(){
+    var status=document.getElementById("calStatus"), toggle=document.getElementById("viewToggle"), calBtn=document.getElementById("calBtn");
+    if(isCalibrated()){
+      status.innerHTML='calibrated to you · <span style="color:var(--filter)">i a u ✓</span>';
+      toggle.hidden=false; toggle.textContent = viewNorm ? "Show raw Hz" : "Show my space";
+      calBtn.textContent="Recalibrate";
+    } else {
+      status.textContent="Uncalibrated — showing raw Hz";
+      toggle.hidden=true;
+      calBtn.textContent="Calibrate to me";
+    }
+  }
+
+  // ---- capture flow: held-average-until-stable ----
+  var calMode=false, calIdx=0, calBuf=[], calHoldStart=0, calDraft={};
+  var CAL_BUF_MAX=48, CAL_STEADY=80, CAL_HOLD_MS=500, TOL_F1=28, TOL_F2=60;
+
+  function setMeter(pct){ var f=document.getElementById("calMeter"); if(f) f.style.width=clamp(pct,0,100)+"%"; }
+  function updateCalTarget(){
+    var c=CORNERS[calIdx], p=CAL_PROMPTS[c];
+    document.getElementById("calIpa").textContent=p.ipa;
+    document.getElementById("calWord").textContent="sustain "+p.word;
+    var steps=document.getElementById("calSteps"); steps.innerHTML="";
+    CORNERS.forEach(function(cc,idx){ var s=document.createElement("span"); s.className="calstep"+(idx<calIdx?" done":"")+(idx===calIdx?" active":""); s.textContent=cc+(idx<calIdx?" ✓":""); steps.appendChild(s); });
+    var lock=document.getElementById("calLock"); lock.textContent="Lock "+p.ipa; lock.disabled=true;
+    setMeter(0);
+  }
+  function startCalibration(){
+    if(!running){ document.getElementById("calStatus").textContent="Start the microphone first, then calibrate."; return; }
+    calMode=true; calIdx=0; calBuf=[]; calHoldStart=0; calDraft={};
+    document.getElementById("calPanel").hidden=false;
+    updateCalTarget();
+    RS.log('calib','start');
+  }
+  function calTick(){
+    var m=measureNow(); if(!m||!m.f1||!m.f2) return;
+    calBuf.push({f1:m.f1,f2:m.f2}); if(calBuf.length>CAL_BUF_MAX) calBuf.shift();
+    if(calBuf.length<20){ setMeter(0); return; }
+    var mf1=mean(calBuf.map(function(x){return x.f1;})), mf2=mean(calBuf.map(function(x){return x.f2;}));
+    var sd1=std(calBuf.map(function(x){return x.f1;}),mf1), sd2=std(calBuf.map(function(x){return x.f2;}),mf2);
+    var steady=clamp(100*(1-0.5*(sd1/TOL_F1+sd2/TOL_F2)),0,100);
+    setMeter(steady);
+    document.getElementById("calLock").disabled = steady<CAL_STEADY;
+    if(RS.debug) RS.set('calib',{corner:CORNERS[calIdx],steady:Math.round(steady),f1:Math.round(mf1),f2:Math.round(mf2)});
+    var now=performance.now();
+    if(steady>=CAL_STEADY){ if(!calHoldStart) calHoldStart=now; else if(now-calHoldStart>=CAL_HOLD_MS) lockCorner(mf1,mf2); }
+    else calHoldStart=0;
+  }
+  function lockCorner(mf1,mf2){
+    var c={f1:mf1,f2:mf2};
+    var mouth=(window.MouthScope&&window.MouthScope.active())?window.MouthScope.sample():null;
+    if(mouth){ c.ap=mouth.ap; c.wd=mouth.wd; }
+    calDraft[CORNERS[calIdx]]=c;
+    RS.log('calib','locked',CORNERS[calIdx],{f1:Math.round(mf1),f2:Math.round(mf2),mouth:mouth});
+    calIdx++; calBuf=[]; calHoldStart=0;
+    if(calIdx>=CORNERS.length) finishCalibration(); else updateCalTarget();
+  }
+  function finishCalibration(){
+    calib=calDraft; saveCalib(); calMode=false; viewNorm=true;
+    document.getElementById("calPanel").hidden=true;
+    drawPlot(); renderClusters(); refreshMouthMap(); renderCalCard(); refreshCalUI();
+    RS.log('calib','complete',{vsa:Math.round(vsa()),fcr:fcr()});
+  }
+  function cancelCalibration(){
+    calMode=false; calBuf=[]; calHoldStart=0;
+    document.getElementById("calPanel").hidden=true;
+    RS.log('calib','cancelled');
+  }
+
+  document.getElementById("calBtn").addEventListener("click", startCalibration);
+  document.getElementById("calCancel").addEventListener("click", cancelCalibration);
+  document.getElementById("calLock").addEventListener("click", function(){
+    if(calBuf.length<20) return;
+    lockCorner(mean(calBuf.map(function(x){return x.f1;})), mean(calBuf.map(function(x){return x.f2;})));
+  });
+  document.getElementById("viewToggle").addEventListener("click", function(){
+    viewNorm=!viewNorm; drawPlot(); renderClusters(); refreshMouthMap(); refreshCalUI();
+  });
 
   document.getElementById("clearActive").addEventListener("click", function(){
     points=points.filter(function(p){return p.v!==activeVowel.v;});
@@ -419,7 +745,10 @@
     points=[]; savePts(); drawPlot(); renderClusters(); refreshMouthMap();
   });
 
+  loadCalib();
   loadPts();
+  renderCalCard();
+  refreshCalUI();
 })();
 </script>
 
@@ -443,8 +772,10 @@ import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundl
   var UP=13, LO=14, LC=61, RC=291, EYE_L=33, EYE_R=263;
   var LIP_DOTS=[13,14,61,291,0,17,37,267,39,269]; // light overlay set
 
-  var landmarker=null, stream=null, running=false, haveFace=false;
+  var landmarker=null, stream=null, running=false, haveFace=false, dimsLogged=false;
   var buf=[], BUF_MAX=14; // rolling {ap,wd}, mirrors the audio window
+  var RS = window.RS || {log:function(){},warn:function(){},set:function(){},debug:false};
+  function setFace(v){ if(v!==haveFace){ haveFace=v; RS.log('cam', v?'face acquired':'face lost'); } }
 
   window.MouthScope={
     active:function(){ return running && haveFace && buf.length>0; },
@@ -465,15 +796,18 @@ import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundl
     camBtn.disabled=true; camBtn.textContent="Starting camera…";
     try{
       if(!landmarker){
+        var t0=performance.now();
         var fileset=await FilesetResolver.forVisionTasks("./vendor/mediapipe/wasm");
         landmarker=await FaceLandmarker.createFromOptions(fileset,{
           baseOptions:{ modelAssetPath:"./models/face_landmarker.task" },
           runningMode:"VIDEO", numFaces:1
         });
+        RS.log('cam','model loaded in', Math.round(performance.now()-t0)+'ms');
       }
     }catch(e){
       camBtn.disabled=false; camBtn.textContent="Enable camera (optional)";
       setHint('<b style="color:var(--word)">Face model failed to load.</b> The vendored MediaPipe files may be missing. The microphone instrument still works on its own.');
+      RS.warn('cam','model load failed', e);
       return;
     }
     try{
@@ -481,6 +815,7 @@ import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundl
     }catch(e){
       camBtn.disabled=false; camBtn.textContent="Enable camera (optional)";
       setHint('<b style="color:var(--word)">Camera blocked or unavailable.</b> This feature is optional — the microphone instrument works without it. If you meant to allow it, check the browser’s camera permission.');
+      RS.warn('cam','getUserMedia failed', e);
       return;
     }
     video.srcObject=stream;
@@ -493,12 +828,13 @@ import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundl
   }
 
   function stop(){
-    running=false; haveFace=false; buf=[];
+    running=false; setFace(false); buf=[]; dimsLogged=false;
     if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
     video.srcObject=null;
     camwrap.classList.remove("on");
     camBtn.textContent="Enable camera (optional)";
     octx.clearRect(0,0,overlay.width,overlay.height);
+    RS.log('cam','stopped'); RS.set('cam',{running:false,face:false});
   }
 
   function loop(){
@@ -506,17 +842,20 @@ import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundl
     requestAnimationFrame(loop);
     if(video.readyState<2) return;
     var W=video.videoWidth||320, H=video.videoHeight||240;
-    var res;
-    try{ res=landmarker.detectForVideo(video, performance.now()); }catch(e){ return; }
+    if(!dimsLogged && video.videoWidth){ dimsLogged=true; RS.log('cam','video ready', W+'×'+H); }
+    var t0=performance.now(), res;
+    try{ res=landmarker.detectForVideo(video, t0); }catch(e){ return; }
+    var dt=performance.now()-t0;
     octx.clearRect(0,0,overlay.width,overlay.height);
-    if(!res || !res.faceLandmarks || !res.faceLandmarks.length){ haveFace=false; return; }
+    if(!res || !res.faceLandmarks || !res.faceLandmarks.length){ setFace(false); RS.set('cam',{running:true,face:false,detectMs:Math.round(dt)}); return; }
     var lm=res.faceLandmarks[0];
     var eye=dist(lm[EYE_L],lm[EYE_R],W,H);
-    if(eye<1){ haveFace=false; return; }
+    if(eye<1){ setFace(false); RS.set('cam',{running:true,face:false,detectMs:Math.round(dt)}); return; }
     var ap=dist(lm[UP],lm[LO],W,H)/eye;
     var wd=dist(lm[LC],lm[RC],W,H)/eye;
-    haveFace=true;
+    setFace(true);
     buf.push({ap:ap,wd:wd}); if(buf.length>BUF_MAX) buf.shift();
+    RS.set('cam',{running:true,face:true,ap:Math.round(ap*1000)/1000,wd:Math.round(wd*1000)/1000,buf:buf.length,detectMs:Math.round(dt)});
     // light lip/eye overlay in filter teal
     octx.fillStyle="#57C8BE";
     var ow=overlay.width, oh=overlay.height;
