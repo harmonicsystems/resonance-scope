@@ -244,7 +244,7 @@
   <div id="calreadouts" class="calreadouts"></div>
 </section>
 
-<p class="note"><b>Honest limits.</b> F1/F2 here come from peak-picking a smoothed spectrum — a genuine first-pass estimate, not clinical LPC, and it can confuse a strong harmonic for a formant on high or breathy notes. Read the <i>movement</i> and <i>clustering</i>, not the absolute Hz. And nasality stays this method's blind spot: the velum's signature is missing energy (anti-formants), which a spectrogram shows poorly — that axis wants a nasometer, not a mic.</p>
+<p class="note"><b>Honest limits.</b> F1/F2 here come from peak-picking a smoothed spectrum — a genuine first-pass estimate, not clinical LPC, and it can confuse a strong harmonic for a formant on high or breathy notes. Read the <i>movement</i> and <i>clustering</i>, not the absolute Hz. Points drawn <b>hollow</b> fell back to a plain-max pick — a low-confidence estimate, worth extra caution. And nasality stays this method's blind spot: the velum's signature is missing energy (anti-formants), which a spectrogram shows poorly — that axis wants a nasometer, not a mic.</p>
 
 <p class="note" style="border-left-color:var(--filter)"><b>What the camera can and can't see.</b> The mouth score reads only two visible dials — jaw <i>aperture</i> and lip <i>spread</i> — normalized to your face so it's relative, not absolute. Tongue frontness, lip protrusion (depth), and everything inside the tract stay invisible to a camera, exactly as nasality stays invisible to the mic. It's a <i>partial</i>, complementary hit-rate, not a fuller or "more correct" measurement — and it never grades your shape against a target.</p>
 
@@ -510,7 +510,8 @@
       // second instrument: if the camera is running, sample the averaged mouth shape too.
       var mouth = (window.MouthScope && window.MouthScope.active()) ? window.MouthScope.sample() : null;
       var src = sampleF0();   // source read-out sampled at freeze (voiced only)
-      var pt = {v:activeVowel.v, f1:f1, f2:f2};
+      var pt = {v:activeVowel.v, f1:f1, f2:f2, t:Date.now()};   // t = capture time (ms) — turns points into a time series
+      if(i1.fallback||i2.fallback) pt.fb=true;                  // fb = low-confidence formant pick (plain-max fallback used)
       if(mouth){ pt.ap=mouth.ap; pt.wd=mouth.wd; }
       if(src){ pt.f0=src.f0; pt.f0c=src.f0c; }   // additive; f0 now available here for a future n·F0 harmonic-collision flag
       points.push(pt);
@@ -547,6 +548,12 @@
   function px(f2){ return plot.width*(1-(clamp(f2,F2LO,F2HI)-F2LO)/(F2HI-F2LO)); }
   function py(f1){ return plot.height*((clamp(f1,F1LO,F1HI)-F1LO)/(F1HI-F1LO)); }
   function clamp(x,a,b){return x<a?a:(x>b?b:x);}
+  // a frozen point on either vowel-space plot; hollow (outline only) marks a low-confidence pick (fb)
+  function drawPt(ctx,x,y,color,low){
+    ctx.beginPath(); ctx.arc(x,y,3.5,0,6.2832);
+    if(low){ ctx.fillStyle="#141019"; ctx.fill(); ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.stroke(); }
+    else { ctx.fillStyle=color; ctx.fill(); ctx.strokeStyle="rgba(0,0,0,.4)"; ctx.lineWidth=1; ctx.stroke(); }
+  }
 
   function drawPlot(){
     if(useNorm()){ drawPlotNorm(); return; }
@@ -572,10 +579,8 @@
     });
     // user points
     points.forEach(function(p){
-      var vw=vowelByName(p.v); var x=px(p.f2), y=py(p.f1);
-      pctx.beginPath(); pctx.arc(x,y,3.5,0,6.2832);
-      pctx.fillStyle=vColor(vw?vw.bright:0.5); pctx.fill();
-      pctx.strokeStyle="rgba(0,0,0,.4)"; pctx.lineWidth=1; pctx.stroke();
+      var vw=vowelByName(p.v);
+      drawPt(pctx, px(p.f2), py(p.f1), vColor(vw?vw.bright:0.5), p.fb);
     });
   }
   function vowelByName(n){for(var i=0;i<VOWELS.length;i++)if(VOWELS[i].v===n)return VOWELS[i];return null;}
@@ -608,10 +613,8 @@
     });
     points.forEach(function(p){
       var xn=n2(p.f2), yn=n1(p.f1); if(xn==null||yn==null) return;
-      var vw=vowelByName(p.v), x=nx(xn), y=ny(yn);
-      pctx.beginPath(); pctx.arc(x,y,3.5,0,6.2832);
-      pctx.fillStyle=vColor(vw?vw.bright:0.5); pctx.fill();
-      pctx.strokeStyle="rgba(0,0,0,.4)"; pctx.lineWidth=1; pctx.stroke();
+      var vw=vowelByName(p.v);
+      drawPt(pctx, nx(xn), ny(yn), vColor(vw?vw.bright:0.5), p.fb);
     });
   }
 

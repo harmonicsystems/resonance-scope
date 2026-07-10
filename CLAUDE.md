@@ -29,9 +29,12 @@ A browser-based instrument for measuring vocal-tract resonance **from acoustics 
 Persistence now uses `localStorage` (JSON-serialized) under key `formant:points:v1`. The original
 artifact build called `window.storage.get/set` — a Claude-only API, `undefined` in a normal
 browser — so points silently never persisted on the real site; that's fixed. Each point record is
-`{v, f1, f2, ap?, wd?, f0?, f0c?}`; the `ap`/`wd` (mouth-shape) and `f0`/`f0c` (pitch + confidence)
-fields are **additive and optional**, so older persisted points without them stay valid. Every
-consumer guards on `typeof p.<field>==='number'` — follow that pattern for any new field. Keep the same key and the same graceful-degradation
+`{v, f1, f2, t, ap?, wd?, f0?, f0c?, fb?}`: `t` = capture time (`Date.now()` ms, turns the point set
+into a time series for longitudinal tracking); `ap`/`wd` (mouth-shape), `f0`/`f0c` (pitch +
+confidence), and `fb` (`true` when the formant pick fell back to plain-max — a low-confidence quality
+flag, surfaced as a **hollow** marker on the vowel-space plots) are all **additive and optional**, so
+older persisted points without them stay valid. Every consumer guards on the field's presence
+(`typeof p.<field>==='number'`, or `p.fb`) — follow that pattern for any new field. Keep the same key and the same graceful-degradation
 behavior (app must fully work with persistence disabled — the `try/catch` is load-bearing). If data
 ever outgrows `localStorage`, `IndexedDB` is the upgrade path.
 
