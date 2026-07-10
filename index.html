@@ -63,8 +63,33 @@
   .calreadouts .crow2{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:8px 0;border-top:1px solid var(--hair)}
   .calreadouts .crow2:first-child{border-top:0}
   .calreadouts .ck{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-dim)}
-  .calreadouts .cvv{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--filter);font-weight:600}
+  .calreadouts .cvv{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--filter);font-weight:600;white-space:nowrap}
   .calreadouts .cd{font-size:11.5px;color:var(--ink-faint);margin-left:auto;margin-right:10px}
+
+  .srow{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--hair)}
+  .srow:first-child{border-top:0}
+  .srow.thin{opacity:.5}
+  .srow .cv{font-family:"IBM Plex Mono",monospace;font-weight:600;width:14px;text-align:center;flex:0 0 auto}
+  .srow .spark{flex:0 0 auto;background:#141019;border-radius:2px;width:160px;height:34px}
+  .srow .cs{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-faint);line-height:1.45}
+  .srow .cs b{color:var(--ink-dim);font-weight:500}
+  .srow .cs .cd{color:var(--ink-faint);opacity:.85}
+  #sessions .lock,#sessions .none{font-size:12.5px;color:var(--ink-faint);margin:0}
+  #sessions .lock b{color:var(--filter)}
+
+  .glossary{margin-top:20px;border-top:1px solid var(--hair);padding-top:16px}
+  .glossary>summary{cursor:pointer;font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--filter);list-style:none}
+  .glossary>summary::-webkit-details-marker{display:none}
+  .glossary>summary::before{content:"▸ ";color:var(--ink-faint)}
+  .glossary[open]>summary::before{content:"▾ "}
+  .glossary>summary:focus-visible{outline:2px solid var(--filter);outline-offset:3px}
+  #glossbody{margin-top:14px;max-width:82ch}
+  .gsub{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin:16px 0 6px}
+  .gsub:first-child{margin-top:0}
+  .grow{display:flex;gap:14px;padding:4px 0;font-size:12.5px;line-height:1.5}
+  .gt{font-family:"IBM Plex Mono",monospace;font-weight:600;flex:0 0 30%;max-width:190px}
+  .gd{color:var(--ink-dim);flex:1}
+  @media(max-width:560px){.grow{flex-direction:column;gap:1px}.gt{flex-basis:auto;max-width:none}}
 
   .scopewrap{margin-top:16px;position:relative;background:#0C0B12;border:1px solid var(--hair);border-radius:3px;overflow:hidden}
   #scope{display:block;width:100%;height:260px}
@@ -223,6 +248,7 @@
     <div class="plotctrls">
       <button class="mini" id="clearActive">Clear tagged vowel</button>
       <button class="mini" id="clearAll">Clear all points</button>
+      <button class="mini" id="exportBtn" disabled>Export JSON</button>
     </div>
   </section>
   <section class="card clusters">
@@ -232,6 +258,12 @@
   </section>
 </div>
 
+<section class="card" id="sessioncard" style="display:none;margin-top:16px">
+  <h2 style="color:var(--filter)">Reproducibility over sessions</h2>
+  <p class="sub">Per-vowel cluster spread across your practice sessions — lower is tighter. Describes your own consistency over time, not correctness.</p>
+  <div id="sessions"></div>
+</section>
+
 <section class="card" id="mouthcard" style="display:none;margin-top:16px">
   <h2 style="color:var(--filter)">Mouth-shape map (open × wide)</h2>
   <p class="sub">The visual twin of the vowel-space map — a second, independent instrument. Axes are ratios normalized to your own face, so read the <i>clustering</i>, not the numbers. Colored by vowel tag.</p>
@@ -240,7 +272,7 @@
 
 <section class="card" id="calcard" style="display:none;margin-top:16px">
   <h2 style="color:var(--filter)">Calibration read-outs</h2>
-  <p class="sub">Descriptive characterization of your own vowel space, from your /i a u/ anchors — <b style="color:var(--ink-dim)">not diagnostic</b>.</p>
+  <p class="sub">A descriptive baseline from your /i a u/ anchors, set when you calibrate (it won't change until you recalibrate) — characterizes your own vowel space, <b style="color:var(--ink-dim)">not diagnostic</b>.</p>
   <div id="calreadouts" class="calreadouts"></div>
 </section>
 
@@ -251,6 +283,11 @@
 <p class="note" style="border-left-color:var(--filter)"><b>About calibration.</b> Anchoring to your own /i a u/ turns raw Hz into a position <i>inside your own vowel space</i> — that's what makes clustering stable session-to-session and comparable across different vocal tracts. Two honest caveats: the normalized space is only as good as the anchors, so capture each corner while the steadiness meter is high; and normalization fixes the <i>scale</i>, not the underlying estimate — F1/F2 are still peak-picked, not LPC. The read-outs (VSA, centralization) describe <i>your own</i> space and are never a diagnosis.</p>
 
 <p class="note" style="border-left-color:var(--source)"><b>About F0 (the source).</b> F0 is the <i>source</i> — vocal-fold rate — shown in warm, distinct from the cool filter (F1/F2). It's a first-pass estimate too: it can octave-halve or double on breathy or creaky phonation. Unvoiced and whispered sounds have no F0, so a blank read-out is correct, not a failure. And in a cluster, F0 <i>drift</i> is a <b style="color:var(--ink-dim)">pitch-steadiness</b> check — it tells you whether you held pitch while varying the vowel — <i>not</i> a reproducibility score; high drift is a caution that a wide F1/F2 cluster may just be pitch wobble.</p>
+
+<details class="glossary" id="glossary">
+  <summary>Glossary / key — what every term means</summary>
+  <div id="glossbody"></div>
+</details>
 
 <footer>Runs entirely in your browser — no audio or video leaves the device, nothing is uploaded. Face landmarks are computed on-device and discarded; only the two mouth ratios are kept with each frozen point. Points persist locally between sessions.</footer>
 
@@ -675,6 +712,7 @@
 
   // ---- clusters ----
   function renderClusters(){
+    refreshSessions(); refreshDataButtons();   // keep the progress card + export button in sync with points
     var el=document.getElementById("clusters");
     var groups={};
     points.forEach(function(p){ (groups[p.v]=groups[p.v]||[]).push(p); });
@@ -769,8 +807,8 @@
     card.style.display="";
     var area=vsa(), f=fcr();
     function row(k,v,d){ return '<div class="crow2"><span class="ck">'+k+'</span><span class="cd">'+d+'</span><span class="cvv">'+v+'</span></div>'; }
-    el.innerHTML = row('VSA', Math.round(area).toLocaleString()+' Hz²', 'area of your i–a–u triangle') +
-                   row('FCR', f.toFixed(3), 'centralization — higher = more centralized');
+    el.innerHTML = row('VSA', Math.round(area/1000).toLocaleString()+' ×10³ Hz²', 'your i–a–u triangle area — larger = more distinct vowels') +
+                   row('FCR', f.toFixed(3), 'centralization ratio — lower = more distinct vowels');
   }
 
   function refreshCalUI(){
@@ -852,6 +890,111 @@
     viewNorm=!viewNorm; drawPlot(); renderClusters(); refreshMouthMap(); refreshCalUI();
   });
 
+  // ---- export: local, user-initiated JSON download (no network — Blob object URL) ----
+  function ymd(){ var d=new Date(),p=function(n){return (n<10?"0":"")+n;}; return ""+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); }
+  function exportData(){
+    if(!points.length) return;
+    var payload={
+      schema:"resonance-scope/points", schemaVersion:1, app:"resonance-scope",
+      exportedAt:new Date().toISOString(), pointCount:points.length,
+      fields:{ v:"vowel tag (u/o/a/e/i)", f1:"first formant, Hz (raw)", f2:"second formant, Hz (raw)", t:"capture time, ms since epoch", ap:"mouth aperture ratio (optional)", wd:"mouth width ratio (optional)", f0:"fundamental Hz, source (optional)", f0c:"F0 clarity 0..1 (optional)", fb:"true = low-confidence formant pick (optional)" },
+      calibration: isCalibrated()?calib:null,
+      points: points
+    };
+    var blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+    var url=URL.createObjectURL(blob), a=document.createElement("a");
+    a.href=url; a.download="resonance-scope-"+ymd()+".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); },0);   // revoke AFTER the click is dispatched
+    RS.log('export','wrote',points.length,'points',isCalibrated()?'+calib':'(no calib)');
+  }
+  function refreshDataButtons(){ var b=document.getElementById("exportBtn"); if(b) b.disabled=points.length===0; }
+  document.getElementById("exportBtn").addEventListener("click", exportData);
+
+  // ---- session / time progress view (calibration-gated) ----
+  var SESSION_GAP_MS=30*60*1000;   // ≥30 min gap between freezes = a new session
+  function sessionize(){
+    var ts=points.filter(function(p){return typeof p.t==="number";}).slice().sort(function(a,b){return a.t-b.t;});
+    var out=[], cur=null, lastT=null;
+    ts.forEach(function(p){
+      if(cur===null || (p.t-lastT)>SESSION_GAP_MS){ cur={start:p.t,pts:[]}; out.push(cur); }
+      cur.pts.push(p); lastT=p.t;
+    });
+    return out;
+  }
+  // per (session, vowel): normalized cluster spread over usable (non-fb) points, + counts + F0 drift
+  function vowelSessionStat(sessPts, v){
+    var all=sessPts.filter(function(p){return p.v===v;});
+    var usable=all.filter(function(p){return !p.fb;});
+    if(usable.length<2) return null;
+    var a1=usable.map(function(p){return n1(p.f1);}), a2=usable.map(function(p){return n2(p.f2);});
+    var i; for(i=0;i<a1.length;i++){ if(a1[i]==null||a2[i]==null) return null; }
+    var spread=Math.sqrt(Math.pow(std(a1,mean(a1)),2)+Math.pow(std(a2,mean(a2)),2))*100;
+    var gf=usable.filter(function(p){return typeof p.f0==="number";}), drift=null;
+    if(gf.length>=2){ var mf0=mean(gf.map(function(p){return p.f0;})); var cents=gf.map(function(p){return 1200*Math.log(p.f0/mf0)/Math.LN2;}); drift=std(cents,mean(cents)); }
+    return { spread:spread, n:usable.length, total:all.length, drift:drift };
+  }
+  function dstr(ms){ var d=new Date(ms); return (d.getMonth()+1)+'/'+d.getDate(); }
+  function drawSpark(cv, vals, color){
+    if(!cv) return; var ctx=cv.getContext("2d"), W=cv.width, H=cv.height, pad=5, i;
+    ctx.clearRect(0,0,W,H); ctx.fillStyle="#141019"; ctx.fillRect(0,0,W,H);
+    if(!vals.length) return;
+    var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals); if(hi-lo<1e-6) hi=lo+1;
+    function X(i2){ return vals.length<2 ? W/2 : pad+(W-2*pad)*i2/(vals.length-1); }
+    function Y(v){ return pad+(H-2*pad)*((v-lo)/(hi-lo)); }   // tighter (lower spread) → toward top
+    ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.beginPath();
+    for(i=0;i<vals.length;i++){ var x=X(i),y=Y(vals[i]); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+    if(vals.length>=2) ctx.stroke();
+    ctx.fillStyle=color;
+    for(i=0;i<vals.length;i++){ ctx.beginPath(); ctx.arc(X(i),Y(vals[i]), i===vals.length-1?2.8:1.6,0,6.2832); ctx.fill(); }
+  }
+  function refreshSessions(){
+    var card=document.getElementById("sessioncard"), el=document.getElementById("sessions");
+    if(!card||!el) return;
+    var sessions=sessionize();
+    if(sessions.length===0){ card.style.display="none"; return; }   // no timestamped history yet
+    card.style.display="";
+    if(!isCalibrated()){
+      el.innerHTML='<p class="lock">Reproducibility over time — <b>locked</b>. Your spreads are raw Hz right now, which changes with mic distance, so sessions can’t be compared. <b>Calibrate to your /i a u/</b> and each practice becomes comparable — that’s what turns this into an honest progress view.</p>';
+      return;
+    }
+    var series={};   // v -> [{spread,n,total,drift,start}] per session where computable
+    sessions.forEach(function(s){
+      VOWELS.forEach(function(vw){
+        var st=vowelSessionStat(s.pts, vw.v);
+        if(st){ (series[vw.v]=series[vw.v]||[]).push({spread:st.spread,n:st.n,total:st.total,drift:st.drift,start:s.start}); }
+      });
+    });
+    var vkeys=VOWELS.filter(function(vw){return series[vw.v];});
+    if(sessions.length<2 || vkeys.length===0){
+      var parts=vkeys.map(function(vw){ var last=series[vw.v][series[vw.v].length-1]; return '<span style="color:'+vColor(vw.bright)+'">'+vw.v+'</span> ±'+last.spread.toFixed(1)+'% (n='+last.n+')'; });
+      el.innerHTML='<p class="none">'+(sessions.length<2?'One session so far — no trend yet.':'Not enough per-vowel data yet (need ≥2 productions of a vowel in a session).')+(parts.length?' This session: '+parts.join(' · '):'')+'</p>';
+      return;
+    }
+    el.innerHTML="";
+    vkeys.forEach(function(vw){
+      var ser=series[vw.v], last=ser[ser.length-1];
+      var best=ser.reduce(function(m,x){return x.spread<m.spread?x:m;}, ser[0]);
+      var thin=last.n<5, excluded=last.total-last.n, verb="";
+      if(ser.length>=3){   // trend verb only when earned, neutral, noise-aware
+        var half=Math.floor(ser.length/2);
+        var early=median(ser.slice(0,half).map(function(x){return x.spread;}));
+        var recent=median(ser.slice(ser.length-half).map(function(x){return x.spread;}));
+        var d=recent-early;
+        verb = Math.abs(d)<1 ? '– holding steady' : (d<0?'▼ tightening':'▲ widening');
+      }
+      var driftNote=(last.drift!=null && last.drift>20) ? ' <span class="cd">· pitch drifted this session (±'+Math.round(last.drift)+'¢) — some change may be pitch, not resonance</span>' : '';
+      var exclNote=excluded>0 ? ' <span class="cd">· '+excluded+' low-confidence excluded</span>' : '';
+      var row=document.createElement("div"); row.className="srow"+(thin?" thin":"");
+      row.innerHTML='<span class="cv" style="color:'+vColor(vw.bright)+'">'+vw.v+'</span>'+
+        '<canvas class="spark" width="160" height="34"></canvas>'+
+        '<span class="cs">this ±'+last.spread.toFixed(1)+'% · best ±'+best.spread.toFixed(1)+'% ('+dstr(best.start)+') · n='+last.n+(verb?' <b>'+verb+'</b>':'')+driftNote+exclNote+'</span>';
+      el.appendChild(row);
+      drawSpark(row.querySelector(".spark"), ser.map(function(x){return x.spread;}), vColor(vw.bright));
+    });
+    RS.set('sessions',{count:sessions.length,vowels:vkeys.length});
+  }
+
   document.getElementById("clearActive").addEventListener("click", function(){
     points=points.filter(function(p){return p.v!==activeVowel.v;});
     savePts(); drawPlot(); renderClusters(); refreshMouthMap();
@@ -860,10 +1003,46 @@
     points=[]; savePts(); drawPlot(); renderClusters(); refreshMouthMap();
   });
 
+  // ---- glossary (single source of truth; a future tooltip layer can reuse this data) ----
+  var DEFINITIONS=[
+    {group:"Orientation", term:"reproducibility", color:"", def:"The core idea: how consistently you re-land <i>your own</i> production. Measured as cluster spread — never a comparison to a “correct” target."},
+    {group:"Orientation", term:"source vs filter", color:"", def:"<b style=\"color:var(--source)\">Source</b> = the voice itself (pitch / F0). <b style=\"color:var(--filter)\">Filter</b> = the vocal-tract shape that colors it (formants). The tool separates the two."},
+    {group:"Source", term:"F0", color:"source", def:"Fundamental frequency — how fast your vocal folds vibrate, i.e. your pitch. Shown in Hz (+ nearest note)."},
+    {group:"Source", term:"clarity", color:"source", def:"How periodic/clean the tone is (0–1). When it’s low — breath, creak, silence — F0 reads “—” (unvoiced) instead of guessing."},
+    {group:"Filter — the vocal tract", term:"F1", color:"filter", def:"First formant — tracks how open your jaw/mouth is (tongue height). Higher F1 = more open."},
+    {group:"Filter — the vocal tract", term:"F2", color:"filter", def:"Second formant — tracks tongue frontness (higher = fronter) and lip rounding (rounding lowers it)."},
+    {group:"Filter — the vocal tract", term:"cluster spread", color:"filter", def:"How tightly your repeats of one vowel land in F1×F2. Lower = more reproducible — your “hit-rate.”"},
+    {group:"Filter — the vocal tract", term:"VSA", color:"filter", def:"Vowel Space Area — the size of the triangle your /i a u/ form. Larger = more distinct vowels."},
+    {group:"Filter — the vocal tract", term:"FCR", color:"filter", def:"Formant Centralization Ratio — how centralized (compressed) your vowels are. Lower = more distinct; more comparable across people than VSA."},
+    {group:"Vowel space & calibration", term:"/i a u/", color:"", def:"The <i>point vowels</i> — the acoustic corners of the vowel space, used as your personal anchors."},
+    {group:"Vowel space & calibration", term:"calibration", color:"filter", def:"Capturing your own /i a u/ so every measurement is expressed <i>inside your own vowel space</i>."},
+    {group:"Vowel space & calibration", term:"normalized vs raw Hz", color:"filter", def:"Normalized = your position within your own calibrated range (comparable over time). Raw Hz = absolute (drifts with mic distance)."},
+    {group:"Vowel space & calibration", term:"cents (¢)", color:"", def:"A pitch-distance unit; 100 ¢ = one semitone. Used for F0 drift because it’s even across octaves."},
+    {group:"Camera (visual)", term:"aperture", color:"filter", def:"How far your mouth is open (lip gap ÷ eye-span). A visible stand-in for F1 / openness."},
+    {group:"Camera (visual)", term:"width", color:"filter", def:"How wide/spread your lips are (corner span ÷ eye-span). Spread vs rounding."},
+    {group:"Camera (visual)", term:"mouth spread (±V)", color:"filter", def:"The visual reproducibility score: how repeatably your mouth lands the same shape."},
+    {group:"Reading the plots & sessions", term:"hollow point", color:"", def:"A low-confidence measurement (the formant picker used a fallback). Read with extra caution."},
+    {group:"Reading the plots & sessions", term:"session", color:"", def:"One practice sitting; a gap of ≥30 min between freezes starts a new session."},
+    {group:"Reading the plots & sessions", term:"brightness (vowel color)", color:"", def:"The vowel chips run dark→light for back→front — a visual echo of frontness."},
+    {group:"Limits", term:"nasality", color:"nasal", def:"Not measurable with a mic alone (it shows up as <i>missing</i> energy); wants a nasometer."},
+    {group:"Limits", term:"LPC", color:"", def:"Linear Predictive Coding — the pro method for formants. This tool uses simpler peak-picking, so F1/F2 are honest first-pass estimates."}
+  ];
+  function glossColor(c){ return c==="source"?"var(--source)":c==="filter"?"var(--filter)":c==="nasal"?"var(--nasal)":"var(--ink)"; }
+  function renderGlossary(){
+    var el=document.getElementById("glossbody"); if(!el) return;
+    var html="", lastGroup=null;
+    DEFINITIONS.forEach(function(d){
+      if(d.group!==lastGroup){ html+='<div class="gsub">'+d.group+'</div>'; lastGroup=d.group; }
+      html+='<div class="grow"><span class="gt" style="color:'+glossColor(d.color)+'">'+d.term+'</span><span class="gd">'+d.def+'</span></div>';
+    });
+    el.innerHTML=html;
+  }
+
   loadCalib();
   loadPts();
   renderCalCard();
   refreshCalUI();
+  renderGlossary();
 })();
 </script>
 
