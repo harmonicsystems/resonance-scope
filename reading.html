@@ -36,12 +36,11 @@
   .status.live{color:var(--source)}
   .status.err{color:var(--word)}
 
-  .pitchbar{display:flex;gap:16px;align-items:center;margin:16px 0;flex-wrap:wrap}
-  .f0big{font-family:"IBM Plex Mono",monospace;font-size:clamp(26px,5vw,34px);font-weight:600;color:var(--source);min-width:180px}
-  .f0big .unvoiced{opacity:.35}
-  #contour{flex:1 1 320px;min-width:260px;height:120px;background:#0C0B12;border:1px solid var(--hair);border-radius:3px}
+  .contourwrap{margin:14px 0}
+  .contourwrap .clbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 6px}
+  #contour{display:block;width:100%;height:84px;background:#0C0B12;border:1px solid var(--hair);border-radius:3px}
 
-  .passage{background:var(--panel);border:1px solid var(--hair);border-radius:3px;padding:clamp(18px,3vw,28px);font-size:clamp(17px,2.4vw,21px);line-height:1.85;color:var(--ink);max-width:72ch}
+  .passage{background:var(--panel);border:1px solid var(--hair);border-radius:3px;padding:clamp(16px,3vw,24px);font-size:clamp(16px,2.2vw,20px);line-height:1.7;color:var(--ink);max-width:72ch}
 
   .card{background:var(--panel);border:1px solid var(--hair);border-radius:2px;padding:16px 18px;margin-top:18px}
   .card h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--source);margin:0 0 3px;font-family:"IBM Plex Mono",monospace;font-weight:600}
@@ -63,7 +62,7 @@
 <header>
   <p class="eyebrow">reading · speaking-pitch profile</p>
   <h1>Reading</h1>
-  <p class="lede">Pick a passage and read it aloud. The tool tracks your <b>pitch (F0)</b> live — the <i>source</i> of your voice — and, when you stop, sums up your speaking pitch: average, range, and how much it moved. It measures your <b>pitch, not your words</b> — nothing about pronunciation, and nothing leaves your device.</p>
+  <p class="lede">Pick a passage and read it aloud. The tool shows your <b>pitch movement</b> live — the <i>source</i> of your voice — as a contour, and when you stop it sums up how much your pitch moved (its range and variability). It shows <i>movement</i>, not whether a voice is "high" or "low," and it measures your <b>pitch, not your words</b>. Nothing leaves your device.</p>
   <p class="viewnav"><a href="index.html">← Resonance instrument (vowel space)</a></p>
 </header>
 
@@ -80,16 +79,16 @@
   <span class="status" id="status">Mic off. Pick a passage, press Start, and read it aloud.</span>
 </div>
 
-<div class="pitchbar">
-  <div class="f0big" id="f0big"><b class="f0 unvoiced">—</b></div>
-  <canvas id="contour" width="900" height="120" aria-label="Live pitch contour"></canvas>
+<div class="contourwrap">
+  <p class="clbl">pitch movement</p>
+  <canvas id="contour" width="900" height="84" aria-label="Live pitch-movement contour"></canvas>
 </div>
 
 <div class="passage" id="passageText"></div>
 
 <section class="card" id="statscard" style="display:none">
-  <h2>Your speaking pitch</h2>
-  <p class="sub">Descriptive — a picture of your own pitch over this reading, not a score or a diagnosis.</p>
+  <h2>How your pitch moved</h2>
+  <p class="sub">Descriptive — the movement and spread of your pitch over this reading, not a score or a diagnosis.</p>
   <div id="stats"></div>
 </section>
 
@@ -117,15 +116,14 @@
   // ---- audio + F0 (detection via shared f0.js) ----
   var actx, analyser, srcNode, stream, timeBuf, running=false, raf=0;
   var startBtn=document.getElementById("startBtn"), statusEl=document.getElementById("status");
-  var f0El=document.querySelector("#f0big .f0");
 
   // smoothing/gating — lighter than the resonance tool (connected speech moves faster)
   var RING=3, EMA=0.5, EVERY=2;
   var ring=[], disp=0, voiced=false, tick=0;
   // accumulation over one reading
   var samples=[], voicedFrames=0, totalFrames=0, startT=0;
-  // scrolling contour
-  var hist=[], HIST_MAX=260, C_MIN=70, C_MAX=400;
+  // scrolling contour — self-scaled to the reader's own range, so it shows *movement*, never absolute high/low
+  var hist=[], HIST_MAX=260, cCenter=null, cHalf=null;
   var contour=document.getElementById("contour"), cctx=contour.getContext("2d");
 
   startBtn.addEventListener("click", function(){ running ? stop() : start(); });
@@ -140,7 +138,7 @@
     srcNode.connect(analyser);
     timeBuf=new Float32Array(analyser.fftSize);
     running=true; ring=[]; disp=0; voiced=false; tick=0;
-    samples=[]; voicedFrames=0; totalFrames=0; hist=[]; startT=performance.now();
+    samples=[]; voicedFrames=0; totalFrames=0; hist=[]; cCenter=null; cHalf=null; startT=performance.now();
     document.getElementById("statscard").style.display="none";
     startBtn.textContent="Stop reading";
     statusEl.textContent="Reading — pitch is live. Read the passage aloud at a comfortable pace, then Stop."; statusEl.className="status live";
@@ -153,7 +151,6 @@
     if(actx){ try{ actx.close(); }catch(e){} actx=null; }
     startBtn.textContent="Start reading";
     statusEl.textContent="Stopped. Your speaking-pitch summary is below."; statusEl.className="status";
-    setF0(false);
     showStats();
   }
   function loop(){
@@ -170,26 +167,36 @@
       var med=medArr(ring);
       disp = disp ? disp*(1-EMA)+med*EMA : med;
       voicedFrames++; samples.push(disp); hist.push(disp);
-      setF0(true);
     } else {
-      voiced=false; hist.push(null); setF0(false);
+      voiced=false; hist.push(null);
     }
     if(hist.length>HIST_MAX) hist.shift();
     drawContour();
   }
-  function setF0(v){
-    if(!v){ f0El.textContent="—"; f0El.classList.add("unvoiced"); return; }
-    f0El.classList.remove("unvoiced");
-    f0El.textContent=Math.round(disp)+" Hz ("+F0.noteName(disp)+")";
-  }
-  function contourY(hz){ var lo=Math.log(C_MIN), hi=Math.log(C_MAX), t=(Math.log(hz)-lo)/(hi-lo); t=t<0?0:(t>1?1:t); return contour.height-(t*(contour.height-8))-4; }
+  // Self-scaled contour: centered on the reader's own median pitch, scaled to their own spread
+  // (with a floor so a monotone voice reads flat, not amplified). No labels, no absolute scale —
+  // it shows how the pitch *moves*, never whether a voice is "high" or "low".
   function drawContour(){
-    var W=contour.width, H=contour.height;
+    var W=contour.width, H=contour.height, pad=8, i;
     cctx.clearRect(0,0,W,H); cctx.fillStyle="#0C0B12"; cctx.fillRect(0,0,W,H);
-    cctx.strokeStyle="rgba(255,255,255,.05)"; cctx.lineWidth=1;
-    [100,150,200,300].forEach(function(hz){ var y=contourY(hz); cctx.beginPath(); cctx.moveTo(0,y); cctx.lineTo(W,y); cctx.stroke(); });
-    cctx.fillStyle="#F4B942";
-    for(var i=0;i<hist.length;i++){ var v=hist[i]; if(v==null) continue; var x=W*i/HIST_MAX, y=contourY(v); cctx.fillRect(x,y-1,2.5,2.5); }
+    var vals=[]; for(i=0;i<hist.length;i++) if(hist[i]!=null) vals.push(Math.log(hist[i]));
+    if(vals.length<2){ cCenter=null; cHalf=null; return; }
+    var s=vals.slice().sort(function(a,b){return a-b;}), center=s[Math.floor(s.length/2)];
+    var maxDev=0; for(i=0;i<vals.length;i++){ var d=Math.abs(vals[i]-center); if(d>maxDev) maxDev=d; }
+    var half=Math.max(maxDev, Math.LN2/12*5);                          // floor ≈ 5 semitones half-span
+    if(cCenter==null){ cCenter=center; cHalf=half; }
+    else { cCenter+=(center-cCenter)*0.05; cHalf+=(half-cHalf)*0.05; } // adapt slowly so the line doesn't jitter
+    function Y(hz){ var t=(Math.log(hz)-cCenter)/cHalf; if(t>1)t=1; else if(t<-1)t=-1; return H/2 - t*(H/2-pad); }
+    cctx.strokeStyle="#F4B942"; cctx.lineWidth=2; cctx.lineJoin="round"; cctx.lineCap="round";
+    var BRIDGE=6, gap=0, started=false;                                // connect across short unvoiced gaps
+    cctx.beginPath();
+    for(var j=0;j<hist.length;j++){
+      var v=hist[j]; if(v==null){ gap++; continue; }
+      var x=W*j/HIST_MAX, y=Y(v);
+      if(!started || gap>BRIDGE) cctx.moveTo(x,y); else cctx.lineTo(x,y);
+      started=true; gap=0;
+    }
+    cctx.stroke();
   }
   function medArr(a){ if(!a.length) return 0; var b=a.slice().sort(function(x,y){return x-y;}); var m=Math.floor(b.length/2); return b.length%2?b[m]:(b[m-1]+b[m])/2; }
   function percentile(sorted,p){ if(!sorted.length) return 0; var idx=(sorted.length-1)*p, lo=Math.floor(idx), hi=Math.ceil(idx); return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(idx-lo); }
@@ -207,8 +214,7 @@
     var dur=(performance.now()-startT)/1000;
     function row(k,v,d){ return '<div class="srow2"><span class="sk">'+k+'</span><span class="sd">'+d+'</span><span class="sv">'+v+'</span></div>'; }
     el.innerHTML =
-      row('Mean F0', Math.round(mean)+' Hz ('+F0.noteName(mean)+')', 'your average speaking pitch') +
-      row('Range', rangeSemis.toFixed(1)+' semitones', Math.round(p5)+'–'+Math.round(p95)+' Hz (5th–95th pct)') +
+      row('Pitch range', rangeSemis.toFixed(1)+' semitones', 'how much your pitch moved (5th–95th pct)') +
       row('Variability', sdc.toFixed(1)+' semitones', 'higher = more expressive · lower = flatter') +
       row('Voiced', pctVoiced+'%', 'share of the reading that was voiced') +
       row('Duration', Math.round(dur)+' s', 'time spent reading');
