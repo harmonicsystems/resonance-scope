@@ -20,6 +20,10 @@ Part of the Harmonic Systems family of resonance tools.
   lip spread, a visual reproducibility score that mirrors the acoustic one.
 - **Session progress** — per-vowel cluster spread trended across practice sessions.
 - **Local JSON export** of your points, and an in-app **glossary** defining every term.
+- **Reading / speaking-pitch view** ([`reading.html`](reading.html)) — a simplified page: read a
+  built-in passage aloud and see your live pitch, a scrolling contour, and an end-of-reading summary
+  (mean speaking F0, range and variability in semitones, % voiced). It measures your *pitch*, never
+  your words.
 
 ## Privacy — everything stays on your device
 

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reading — your speaking pitch · Resonance Scope</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#13121A; --panel:#1C1B25; --panel-2:#232230;
+    --hair:rgba(255,255,255,.09); --hair-strong:rgba(255,255,255,.18);
+    --ink:#ECE7DA; --ink-dim:#9A96A8; --ink-faint:#6B6879;
+    --source:#F4B942; --filter:#57C8BE; --word:#E86A5C;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Space Grotesk",system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;padding:clamp(16px,4vw,44px);max-width:900px;margin:0 auto}
+  header{margin-bottom:22px;border-bottom:1px solid var(--hair);padding-bottom:20px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--source);margin:0 0 10px}
+  h1{font-size:clamp(24px,5vw,38px);font-weight:600;line-height:1.05;letter-spacing:-.02em;margin:0 0 12px}
+  .lede{color:var(--ink-dim);max-width:64ch;margin:0;font-size:15px}
+  .lede b{color:var(--ink);font-weight:500}
+  .viewnav{margin:12px 0 0}
+  .viewnav a{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--filter);text-decoration:none;border-bottom:1px solid rgba(87,200,190,.4)}
+  .viewnav a:hover{border-bottom-color:var(--filter)}
+
+  .controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:22px 0 6px}
+  .pick{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);display:flex;gap:8px;align-items:center}
+  .pick select{font-family:"IBM Plex Mono",monospace;font-size:13px;letter-spacing:0;text-transform:none;background:var(--panel-2);color:var(--ink);border:1px solid var(--hair-strong);border-radius:2px;padding:7px 9px;cursor:pointer}
+  .primary{background:var(--source);color:#241a05;border:none;border-radius:2px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;padding:11px 20px;cursor:pointer}
+  .primary:hover{filter:brightness(1.06)}
+  .primary:focus-visible{outline:2px solid var(--filter);outline-offset:2px}
+  .status{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-faint)}
+  .status.live{color:var(--source)}
+  .status.err{color:var(--word)}
+
+  .pitchbar{display:flex;gap:16px;align-items:center;margin:16px 0;flex-wrap:wrap}
+  .f0big{font-family:"IBM Plex Mono",monospace;font-size:clamp(26px,5vw,34px);font-weight:600;color:var(--source);min-width:180px}
+  .f0big .unvoiced{opacity:.35}
+  #contour{flex:1 1 320px;min-width:260px;height:120px;background:#0C0B12;border:1px solid var(--hair);border-radius:3px}
+
+  .passage{background:var(--panel);border:1px solid var(--hair);border-radius:3px;padding:clamp(18px,3vw,28px);font-size:clamp(17px,2.4vw,21px);line-height:1.85;color:var(--ink);max-width:72ch}
+
+  .card{background:var(--panel);border:1px solid var(--hair);border-radius:2px;padding:16px 18px;margin-top:18px}
+  .card h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--source);margin:0 0 3px;font-family:"IBM Plex Mono",monospace;font-weight:600}
+  .card .sub{font-size:12px;color:var(--ink-faint);margin:0 0 12px}
+  .srow2{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:8px 0;border-top:1px solid var(--hair)}
+  .srow2:first-child{border-top:0}
+  .srow2 .sk{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-dim)}
+  .srow2 .sd{font-size:11.5px;color:var(--ink-faint);margin-left:auto;margin-right:10px}
+  .srow2 .sv{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--source);font-weight:600;white-space:nowrap}
+
+  .note{margin-top:20px;font-size:12.5px;color:var(--ink-faint);border-left:2px solid var(--source);padding:3px 0 3px 13px;max-width:74ch}
+  .note b{color:var(--ink-dim);font-weight:500}
+  footer{margin-top:24px;padding-top:16px;border-top:1px solid var(--hair);font-size:12px;color:var(--ink-faint)}
+  footer a{color:var(--ink-dim)}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <p class="eyebrow">reading · speaking-pitch profile</p>
+  <h1>Reading</h1>
+  <p class="lede">Pick a passage and read it aloud. The tool tracks your <b>pitch (F0)</b> live — the <i>source</i> of your voice — and, when you stop, sums up your speaking pitch: average, range, and how much it moved. It measures your <b>pitch, not your words</b> — nothing about pronunciation, and nothing leaves your device.</p>
+  <p class="viewnav"><a href="index.html">← Resonance instrument (vowel space)</a></p>
+</header>
+
+<div class="controls">
+  <label class="pick">Passage
+    <select id="passage">
+      <option value="rainbow">Rainbow</option>
+      <option value="bread">Bread</option>
+      <option value="dragons">Dragons</option>
+      <option value="moon">Moon</option>
+    </select>
+  </label>
+  <button class="primary" id="startBtn">Start reading</button>
+  <span class="status" id="status">Mic off. Pick a passage, press Start, and read it aloud.</span>
+</div>
+
+<div class="pitchbar">
+  <div class="f0big" id="f0big"><b class="f0 unvoiced">—</b></div>
+  <canvas id="contour" width="900" height="120" aria-label="Live pitch contour"></canvas>
+</div>
+
+<div class="passage" id="passageText"></div>
+
+<section class="card" id="statscard" style="display:none">
+  <h2>Your speaking pitch</h2>
+  <p class="sub">Descriptive — a picture of your own pitch over this reading, not a score or a diagnosis.</p>
+  <div id="stats"></div>
+</section>
+
+<p class="note"><b>How to read this.</b> This tracks your <b>pitch (F0)</b> — the source of your voice — not your words or pronunciation; a passage is just a natural way to get you talking. Pitch is a first-pass estimate that can occasionally slip by an octave on breath or creak, so the range uses the 5th–95th percentile to stay robust. Unvoiced sounds (many consonants, pauses) have no pitch — the gaps in the trace are correct, not an error. These numbers describe <i>your own</i> speaking pitch; they are never a target or a diagnosis.</p>
+
+<footer>Runs entirely in your browser — no audio leaves your device, nothing is uploaded. Passages from <a href="https://dnslp.github.io/sample/">dnslp.github.io/sample</a>; “Rainbow” is the standard Rainbow Passage.</footer>
+
+<script src="f0.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var PASSAGES = {
+    rainbow:`When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow. The rainbow is a division of white light into many beautiful colors. These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon. There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it. When a man looks for something beyond his reach, his friends say he is looking for the pot of gold at the end of the rainbow. Throughout the centuries people have explained the rainbow in various ways. Some have accepted it as a miracle without physical explanation. To the Hebrews it was a token that there would be no more universal floods. The Greeks used to imagine that it was a sign from the gods to foretell war or heavy rain. The Norsemen considered the rainbow as a bridge over which the gods passed from earth to their home in the sky. Others have tried to explain the phenomenon physically. Aristotle thought that the rainbow was caused by reflection of the sun's rays by the rain. Since then physicists have found that it is not reflection, but refraction by the raindrops which causes the rainbows.`,
+    bread:`Baking bread is an ancient craft, cherished across cultures and generations. First, gather your ingredients: flour, yeast, salt, and water. Mix them gently until a soft dough forms. Knead it thoroughly, pressing and folding, feeling it transform beneath your hands. As it rises, it doubles in size, the yeast working its magic, creating pockets of air that will give the bread its soft, airy texture. Shape the dough into a loaf, then let it rise again, covering it with a damp cloth. Preheat your oven, the heat necessary to transform the dough into golden perfection. The scent of baking bread fills the kitchen, a comforting aroma that promises warmth and nourishment. When the crust is golden and firm, remove the loaf and let it cool, resisting the temptation to slice it too soon. The first bite of fresh, homemade bread is a delight, the crust crisp and the interior soft and warm. Each slice carries the essence of the baker's skill and patience, a testament to the timeless art of bread-making.`,
+    dragons:`Dragons, majestic and mythical, have captivated imaginations for centuries. These legendary creatures, with scales that shimmer in the sunlight, wings that span the sky, and fiery breath, are both feared and revered. In tales of old, dragons guarded vast treasures, their lairs hidden in mountains or deep within enchanted forests. Heroes and knights sought to challenge these beasts, embarking on quests filled with peril. The roar of a dragon could be heard miles away, a sound that struck fear into the hearts of villagers. Yet, not all dragons were foes; some were wise and noble, bestowing knowledge and gifts upon those deemed worthy. Their eyes, often described as piercing and intelligent, seemed to hold the secrets of the ages. The bond between dragon and rider, in some stories, was one of deep trust and mutual respect. These partnerships, though rare, led to epic adventures and the forging of unbreakable alliances. In modern fantasy, dragons continue to soar across the pages of books and screens of movies, their legacy enduring. They symbolize power, wisdom, and mystery, a testament to the enduring allure of these magnificent creatures.`,
+    moon:`The moon, a celestial beacon, has fascinated humanity since time immemorial. Its pale, luminous glow casts a serene light across the night sky, influencing tides and inspiring countless myths and legends. As it orbits the Earth, the moon goes through phases, from the slender crescent to the full, round brilliance that illuminates the darkness. In ancient times, civilizations built their calendars around the lunar cycle, tracking the passage of months by observing its changes. Astronomers and poets alike have gazed at the moon, finding inspiration in its ever-changing face. The surface of the moon, marked by craters and ancient volcanic plains, tells the story of its turbulent past. During a total lunar eclipse, the moon takes on a reddish hue, earning the nickname "blood moon." This phenomenon occurs when the Earth comes between the sun and the moon, casting a shadow that transforms its usual silvery appearance. The moon landings of the 20th century brought this distant world closer, as astronauts set foot on its barren landscape and brought back samples for study. Legends speak of moon goddesses and mythical creatures that inhabit this glowing orb. The moon continues to be a source of wonder, its silent presence a reminder of the vastness and mystery of the universe. Whether observed through a telescope or admired with the naked eye, the moon remains a symbol of beauty and enigma.`
+  };
+
+  var passageSel=document.getElementById("passage"), passageText=document.getElementById("passageText");
+  function showPassage(){ passageText.textContent = PASSAGES[passageSel.value] || ""; }
+  passageSel.addEventListener("change", showPassage);
+  showPassage();
+
+  // ---- audio + F0 (detection via shared f0.js) ----
+  var actx, analyser, srcNode, stream, timeBuf, running=false, raf=0;
+  var startBtn=document.getElementById("startBtn"), statusEl=document.getElementById("status");
+  var f0El=document.querySelector("#f0big .f0");
+
+  // smoothing/gating — lighter than the resonance tool (connected speech moves faster)
+  var RING=3, EMA=0.5, EVERY=2;
+  var ring=[], disp=0, voiced=false, tick=0;
+  // accumulation over one reading
+  var samples=[], voicedFrames=0, totalFrames=0, startT=0;
+  // scrolling contour
+  var hist=[], HIST_MAX=260, C_MIN=70, C_MAX=400;
+  var contour=document.getElementById("contour"), cctx=contour.getContext("2d");
+
+  startBtn.addEventListener("click", function(){ running ? stop() : start(); });
+
+  async function start(){
+    if(running) return;
+    try{ stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}); }
+    catch(e){ statusEl.textContent="Microphone blocked or unavailable. Allow mic access, and open this over https or localhost."; statusEl.className="status err"; return; }
+    actx=new (window.AudioContext||window.webkitAudioContext)();
+    srcNode=actx.createMediaStreamSource(stream);
+    analyser=actx.createAnalyser(); analyser.fftSize=4096; analyser.smoothingTimeConstant=0.4;
+    srcNode.connect(analyser);
+    timeBuf=new Float32Array(analyser.fftSize);
+    running=true; ring=[]; disp=0; voiced=false; tick=0;
+    samples=[]; voicedFrames=0; totalFrames=0; hist=[]; startT=performance.now();
+    document.getElementById("statscard").style.display="none";
+    startBtn.textContent="Stop reading";
+    statusEl.textContent="Reading — pitch is live. Read the passage aloud at a comfortable pace, then Stop."; statusEl.className="status live";
+    drawContour(); loop();
+  }
+  function stop(){
+    running=false;
+    if(raf) cancelAnimationFrame(raf);
+    if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
+    if(actx){ try{ actx.close(); }catch(e){} actx=null; }
+    startBtn.textContent="Start reading";
+    statusEl.textContent="Stopped. Your speaking-pitch summary is below."; statusEl.className="status";
+    setF0(false);
+    showStats();
+  }
+  function loop(){
+    if(!running) return;
+    raf=requestAnimationFrame(loop);
+    if(tick++ % EVERY !== 0) return;
+    analyser.getFloatTimeDomainData(timeBuf);
+    var pf=F0.detect(timeBuf, actx.sampleRate);
+    totalFrames++;
+    if(pf && pf.clarity>=(voiced?F0.CLARITY_STAY:F0.CLARITY_ENTER)){
+      if(!voiced){ ring=[]; disp=0; }
+      voiced=true;
+      ring.push(pf.f0); if(ring.length>RING) ring.shift();
+      var med=medArr(ring);
+      disp = disp ? disp*(1-EMA)+med*EMA : med;
+      voicedFrames++; samples.push(disp); hist.push(disp);
+      setF0(true);
+    } else {
+      voiced=false; hist.push(null); setF0(false);
+    }
+    if(hist.length>HIST_MAX) hist.shift();
+    drawContour();
+  }
+  function setF0(v){
+    if(!v){ f0El.textContent="—"; f0El.classList.add("unvoiced"); return; }
+    f0El.classList.remove("unvoiced");
+    f0El.textContent=Math.round(disp)+" Hz ("+F0.noteName(disp)+")";
+  }
+  function contourY(hz){ var lo=Math.log(C_MIN), hi=Math.log(C_MAX), t=(Math.log(hz)-lo)/(hi-lo); t=t<0?0:(t>1?1:t); return contour.height-(t*(contour.height-8))-4; }
+  function drawContour(){
+    var W=contour.width, H=contour.height;
+    cctx.clearRect(0,0,W,H); cctx.fillStyle="#0C0B12"; cctx.fillRect(0,0,W,H);
+    cctx.strokeStyle="rgba(255,255,255,.05)"; cctx.lineWidth=1;
+    [100,150,200,300].forEach(function(hz){ var y=contourY(hz); cctx.beginPath(); cctx.moveTo(0,y); cctx.lineTo(W,y); cctx.stroke(); });
+    cctx.fillStyle="#F4B942";
+    for(var i=0;i<hist.length;i++){ var v=hist[i]; if(v==null) continue; var x=W*i/HIST_MAX, y=contourY(v); cctx.fillRect(x,y-1,2.5,2.5); }
+  }
+  function medArr(a){ if(!a.length) return 0; var b=a.slice().sort(function(x,y){return x-y;}); var m=Math.floor(b.length/2); return b.length%2?b[m]:(b[m-1]+b[m])/2; }
+  function percentile(sorted,p){ if(!sorted.length) return 0; var idx=(sorted.length-1)*p, lo=Math.floor(idx), hi=Math.ceil(idx); return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(idx-lo); }
+  function showStats(){
+    var card=document.getElementById("statscard"), el=document.getElementById("stats");
+    card.style.display="";
+    if(samples.length<10){ el.innerHTML='<p class="sub" style="margin:0">Too short to summarize — read more of the passage next time.</p>'; return; }
+    var sorted=samples.slice().sort(function(a,b){return a-b;});
+    var mean=samples.reduce(function(a,b){return a+b;},0)/samples.length;
+    var p5=percentile(sorted,0.05), p95=percentile(sorted,0.95);
+    var rangeSemis=12*Math.log(p95/p5)/Math.LN2;
+    var sdc=0; for(var i=0;i<samples.length;i++){ var c=12*Math.log(samples[i]/mean)/Math.LN2; sdc+=c*c; }
+    sdc=Math.sqrt(sdc/samples.length);
+    var pctVoiced=Math.round(100*voicedFrames/Math.max(1,totalFrames));
+    var dur=(performance.now()-startT)/1000;
+    function row(k,v,d){ return '<div class="srow2"><span class="sk">'+k+'</span><span class="sd">'+d+'</span><span class="sv">'+v+'</span></div>'; }
+    el.innerHTML =
+      row('Mean F0', Math.round(mean)+' Hz ('+F0.noteName(mean)+')', 'your average speaking pitch') +
+      row('Range', rangeSemis.toFixed(1)+' semitones', Math.round(p5)+'–'+Math.round(p95)+' Hz (5th–95th pct)') +
+      row('Variability', sdc.toFixed(1)+' semitones', 'higher = more expressive · lower = flatter') +
+      row('Voiced', pctVoiced+'%', 'share of the reading that was voiced') +
+      row('Duration', Math.round(dur)+' s', 'time spent reading');
+  }
+})();
+</script>
+</body>
+</html>

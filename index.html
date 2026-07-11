@@ -25,6 +25,9 @@
   h1{font-size:clamp(24px,5vw,38px);font-weight:600;line-height:1.05;letter-spacing:-.02em;margin:0 0 12px}
   .lede{color:var(--ink-dim);max-width:62ch;margin:0;font-size:15px}
   .lede b{color:var(--ink);font-weight:500}
+  .viewnav{margin:12px 0 0}
+  .viewnav a{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--source);text-decoration:none;border-bottom:1px solid rgba(244,185,66,.4)}
+  .viewnav a:hover{border-bottom-color:var(--source)}
 
   .startbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:22px 0 6px}
   .primary{background:var(--filter);color:#0c1512;border:none;border-radius:2px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;padding:11px 20px;cursor:pointer}
@@ -195,6 +198,7 @@
   <p class="eyebrow">live spectrogram · freeze-to-measure</p>
   <h1>Resonance Scope</h1>
   <p class="lede">One pipeline, two jobs. Sing a steady vowel on one pitch and watch it live — that's the <b>mirror</b>. When it looks stable, <b>freeze</b> and the same slice is measured for F1 &amp; F2 — that's the <b>instrument</b>. Repeated freezes of one vowel land as a cluster on the map below: <b>tight cluster = reproducible production</b>, the acoustic version of a reliability score.</p>
+  <p class="viewnav"><a href="reading.html">Reading &amp; speaking-pitch view →</a></p>
 </header>
 
 <div class="startbar">
@@ -291,6 +295,7 @@
 
 <footer>Runs entirely in your browser — no audio or video leaves the device, nothing is uploaded. Face landmarks are computed on-device and discarded; only the two mouth ratios are kept with each frozen point. Points persist locally between sessions.</footer>
 
+<script src="f0.js"></script>
 <script>
 (function(){
   "use strict";
@@ -347,10 +352,8 @@
   var startBtn=document.getElementById("startBtn"), freezeBtn=document.getElementById("freezeBtn"), statusEl=document.getElementById("status");
   var MAXHZ=4000, binHz=0, maxBin=0;
 
-  // ---- F0 (source): McLeod Pitch Method (NSDF), own time-domain path ----
-  var timeBuf=null, nsdf=null;                 // allocated in start()
-  var F0_MIN=65, F0_MAX=500;                   // 65 Hz reaches a low male chest voice (C2 ≈ 65.4)
-  var MPM_K=0.9, CLARITY_ENTER=0.93, CLARITY_STAY=0.80, RMS_MIN=0.005;
+  // ---- F0 (source): detection lives in the shared f0.js (window.F0); smoothing/gating stays here ----
+  var timeBuf=null;                            // allocated in start(); NSDF scratch lives in f0.js
   var F0_RING=5, F0_EMA=0.3, PITCH_EVERY=3, F0REC_MAX=14, SHOW_NOTE=true;
   var f0Ring=[], f0Recent=[], f0Disp=0, f0Conf=0, voiced=false, pitchTick=0;
 
@@ -375,7 +378,7 @@
     byteBuf = new Uint8Array(analyser.frequencyBinCount);
     binHz = actx.sampleRate / analyser.fftSize;
     maxBin = Math.min(analyser.frequencyBinCount, Math.floor(MAXHZ/binHz));
-    timeBuf = new Float32Array(analyser.fftSize); nsdf = new Float32Array(analyser.fftSize);
+    timeBuf = new Float32Array(analyser.fftSize);
     f0Ring=[]; f0Recent=[]; f0Disp=0; f0Conf=0; voiced=false; pitchTick=0;
     running=true; lastFrameT=0; fpsSmoothed=0;
     startBtn.textContent="Stop microphone";
@@ -391,7 +394,7 @@
     if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
     if(actx){ try{ actx.close(); }catch(e){} actx=null; }
     recent=[];
-    f0Ring=[]; f0Recent=[]; f0Disp=0; f0Conf=0; voiced=false; timeBuf=null; nsdf=null; paintF0Readout();
+    f0Ring=[]; f0Recent=[]; f0Disp=0; f0Conf=0; voiced=false; timeBuf=null; paintF0Readout();
     startBtn.textContent="Start microphone";
     freezeBtn.disabled=true;
     statusEl.textContent="Microphone off."; statusEl.className="status";
@@ -459,55 +462,16 @@
   // ---- F0 (source) detection: McLeod Pitch Method on the time-domain signal ----
   // NSDF = 2·r(τ)/m(τ) ∈ [-1,1]; key-maximum peak-pick (octave defense) + parabolic
   // interpolation for sub-Hz precision. Clarity (peak height) is the voiced/unvoiced confidence.
+  // detection is the shared engine (f0.js); this wrapper just feeds it the live time-domain frame
   function detectF0(){
     if(!timeBuf || !running) return null;
     analyser.getFloatTimeDomainData(timeBuf);
-    var N=timeBuf.length, sr=actx.sampleRate, i;
-    var mean=0; for(i=0;i<N;i++) mean+=timeBuf[i]; mean/=N;
-    var rms=0; for(i=0;i<N;i++){ var x=timeBuf[i]-mean; timeBuf[i]=x; rms+=x*x; }  // DC removal in place
-    rms=Math.sqrt(rms/N);
-    if(rms<RMS_MIN) return null;                                                    // silence gate
-    var tauMin=Math.floor(sr/F0_MAX), tauMax=Math.min(N-1, Math.ceil(sr/F0_MIN));
-    if(tauMax<=tauMin+1) return null;
-    for(var tau=tauMin;tau<=tauMax;tau++){
-      var r=0,m=0, lim=N-tau;
-      for(i=0;i<lim;i++){ var a=timeBuf[i], b=timeBuf[i+tau]; r+=a*b; m+=a*a+b*b; }
-      nsdf[tau]= m>0 ? 2*r/m : 0;
-    }
-    // collect the maximum of each positive NSDF lobe (skips the τ≈0 lobe — search starts at tauMin)
-    var peaks=[], pos=nsdf[tauMin]>0, curMax=nsdf[tauMin], curTau=tauMin;
-    for(var t2=tauMin+1;t2<=tauMax;t2++){
-      var cur=nsdf[t2];
-      if(!pos){ if(cur>0){ pos=true; curMax=cur; curTau=t2; } }
-      else { if(cur>curMax){ curMax=cur; curTau=t2; } if(cur<=0){ peaks.push({tau:curTau,val:curMax}); pos=false; } }
-    }
-    if(pos) peaks.push({tau:curTau,val:curMax});
-    if(!peaks.length) return null;
-    var nMax=0,p; for(p=0;p<peaks.length;p++) if(peaks[p].val>nMax) nMax=peaks[p].val;
-    if(nMax<=0) return null;
-    var thresh=MPM_K*nMax, key=null;
-    for(p=0;p<peaks.length;p++){ if(peaks[p].val>=thresh){ key=peaks[p]; break; } }  // smallest lag ≥ threshold
-    if(!key) return null;
-    var tk=key.tau, delta=0, clarity=key.val;
-    if(tk>tauMin && tk<tauMax){
-      var y0=nsdf[tk-1], y1=nsdf[tk], y2=nsdf[tk+1], denom=(y0-2*y1+y2);
-      if(denom!==0){ delta=0.5*(y0-y2)/denom; if(delta>1)delta=1; else if(delta<-1)delta=-1; }
-      clarity=y1-0.25*(y0-y2)*delta;
-    }
-    var f0=sr/(tk+delta);
-    if(!isFinite(f0) || f0<62 || f0>555) return null;                               // range sanity
-    return {f0:f0, clarity:clarity};
+    return F0.detect(timeBuf, actx.sampleRate);
   }
 
   function median(a){ if(!a.length) return 0; var b=a.slice().sort(function(x,y){return x-y;}); var m=Math.floor(b.length/2); return b.length%2 ? b[m] : (b[m-1]+b[m])/2; }
-  function noteName(hz){
-    if(!(hz>0)) return '';
-    var NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-    var midi=Math.round(69+12*Math.log(hz/440)/Math.log(2));
-    return NAMES[((midi%12)+12)%12] + (Math.floor(midi/12)-1);
-  }
   function updateF0(pf){
-    if(pf && pf.clarity>=(voiced?CLARITY_STAY:CLARITY_ENTER)){
+    if(pf && pf.clarity>=(voiced?F0.CLARITY_STAY:F0.CLARITY_ENTER)){
       if(!voiced){ f0Ring=[]; f0Recent=[]; f0Disp=0; }   // reset on voicing onset (don't drag from the old note)
       voiced=true; f0Conf=pf.clarity;
       f0Ring.push(pf.f0); if(f0Ring.length>F0_RING) f0Ring.shift();
@@ -525,7 +489,7 @@
     if(!voiced){ el.textContent='—'; el.classList.add('unvoiced'); return; }
     el.classList.remove('unvoiced');
     var hz=Math.round(f0Disp);
-    el.textContent = hz+' Hz' + (SHOW_NOTE ? ' ('+noteName(f0Disp)+')' : '');
+    el.textContent = hz+' Hz' + (SHOW_NOTE ? ' ('+F0.noteName(f0Disp)+')' : '');
   }
   // sample the source at freeze — confidence-weighted mean of the F0 ring (mirrors MouthScope.sample)
   function sampleF0(){
