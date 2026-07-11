@@ -138,7 +138,7 @@ These prose limits notes are **kept alongside** a crisp **glossary** (a collapse
 - Run: open `index.html` in a real browser (Chrome/Safari). Mic requires a user gesture (Start) and https or localhost — GitHub Pages https is fine.
 - **`file://` caveat (changed with the camera feature):** the camera lives in a `<script type="module">` that imports the local `vendor/mediapipe/vision_bundle.mjs`, and browsers only load module imports over `http(s)`/`localhost`, **not `file://`** (Chrome blocks it as CORS). So for local dev with the camera, serve the folder: `python3 -m http.server` then open `localhost:8000`. The **acoustic** tool (classic script) still works fine from `file://`; only the camera needs a served context, and it degrades gracefully (button just won't wire up). GitHub Pages serves everything over https, so production is unaffected.
 - Repo layout: `index.html` (the app) + vendored `vendor/mediapipe/` (~19 MB WASM + ES module) + `models/face_landmarker.task` (~3.7 MB). These are committed static assets — no install, no package manager, no build, no CI. A plain HTML/JS linter is enough if a static check is ever wanted.
-- Deploy: push to `harmonicsystems/resonance-scope`, serve `/` via Pages.
+- Deploy: **live** at https://harmonicsystems.github.io/resonance-scope/ — GitHub Pages, source `main`/root, HTTPS enforced. Public repo (MIT); the README carries the on-device privacy claim. Pushing to `main` redeploys automatically (~1–2 min build). One-time setup is done (Pages enabled + HTTPS). No CI, no build step, and no nightly cron (nothing here is date-derived). A custom domain would be a root `CNAME` file + a DNS record (not set up).
 
 ### Debugging (local-only — never telemetry)
 
