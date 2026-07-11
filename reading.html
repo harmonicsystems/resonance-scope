@@ -37,10 +37,23 @@
   .status.err{color:var(--word)}
 
   .contourwrap{margin:14px 0}
-  .contourwrap .clbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 6px}
-  #contour{display:block;width:100%;height:84px;background:#0C0B12;border:1px solid var(--hair);border-radius:3px}
+  .contourwrap .clbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 6px;display:flex;align-items:center}
+  .clbl .livedot{display:none;width:7px;height:7px;border-radius:50%;background:var(--word);margin-right:8px}
+  .clbl .f0val{color:var(--source);margin-left:auto;letter-spacing:0;text-transform:none;font-size:12px}
+  #contour{display:block;width:100%;height:84px;background:#0C0B12;border:1px solid var(--hair);border-radius:3px;transition:box-shadow .2s,border-color .2s}
+  .contourwrap.recording .livedot{display:inline-block;animation:pulse 1.2s infinite}
+  .contourwrap.recording #contour{border-color:var(--source);box-shadow:0 0 0 1px rgba(244,185,66,.45),0 0 20px rgba(244,185,66,.16)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  .options{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:16px 0 8px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-faint)}
+  .options .opt{display:flex;gap:6px;align-items:center}
+  .options input[type=checkbox]{accent-color:var(--source);cursor:pointer}
+  .options select{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--panel-2);color:var(--ink);border:1px solid var(--hair-strong);border-radius:2px;padding:4px 6px;cursor:pointer}
+  .szbtn{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--panel-2);color:var(--ink-dim);border:1px solid var(--hair-strong);border-radius:2px;padding:3px 9px;cursor:pointer}
+  .szbtn:hover{color:var(--ink)}
 
   .passage{background:var(--panel);border:1px solid var(--hair);border-radius:3px;padding:clamp(16px,3vw,24px);font-size:clamp(16px,2.2vw,20px);line-height:1.7;color:var(--ink);max-width:72ch}
+  .passage.pf-readable{letter-spacing:.02em;word-spacing:.09em;line-height:1.95}
 
   .card{background:var(--panel);border:1px solid var(--hair);border-radius:2px;padding:16px 18px;margin-top:18px}
   .card h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--source);margin:0 0 3px;font-family:"IBM Plex Mono",monospace;font-weight:600}
@@ -55,7 +68,7 @@
   .note b{color:var(--ink-dim);font-weight:500}
   footer{margin-top:24px;padding-top:16px;border-top:1px solid var(--hair);font-size:12px;color:var(--ink-faint)}
   footer a{color:var(--ink-dim)}
-  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
@@ -79,9 +92,22 @@
   <span class="status" id="status">Mic off. Pick a passage, press Start, and read it aloud.</span>
 </div>
 
-<div class="contourwrap">
-  <p class="clbl">pitch movement</p>
+<div class="contourwrap" id="contourwrap">
+  <p class="clbl"><span class="livedot"></span>pitch movement<span class="f0val" id="f0val" hidden></span></p>
   <canvas id="contour" width="900" height="84" aria-label="Live pitch-movement contour"></canvas>
+</div>
+
+<div class="options">
+  <label class="opt"><input type="checkbox" id="showHz"> show pitch (Hz)</label>
+  <span class="opt">text <button class="szbtn" id="szDown" type="button" aria-label="smaller text">A−</button><button class="szbtn" id="szUp" type="button" aria-label="larger text">A+</button></span>
+  <label class="opt">font
+    <select id="font">
+      <option value="grotesk">Sans</option>
+      <option value="serif">Serif</option>
+      <option value="mono">Mono</option>
+      <option value="readable">Readable</option>
+    </select>
+  </label>
 </div>
 
 <div class="passage" id="passageText"></div>
@@ -108,10 +134,30 @@
     moon:`The moon, a celestial beacon, has fascinated humanity since time immemorial. Its pale, luminous glow casts a serene light across the night sky, influencing tides and inspiring countless myths and legends. As it orbits the Earth, the moon goes through phases, from the slender crescent to the full, round brilliance that illuminates the darkness. In ancient times, civilizations built their calendars around the lunar cycle, tracking the passage of months by observing its changes. Astronomers and poets alike have gazed at the moon, finding inspiration in its ever-changing face. The surface of the moon, marked by craters and ancient volcanic plains, tells the story of its turbulent past. During a total lunar eclipse, the moon takes on a reddish hue, earning the nickname "blood moon." This phenomenon occurs when the Earth comes between the sun and the moon, casting a shadow that transforms its usual silvery appearance. The moon landings of the 20th century brought this distant world closer, as astronauts set foot on its barren landscape and brought back samples for study. Legends speak of moon goddesses and mythical creatures that inhabit this glowing orb. The moon continues to be a source of wonder, its silent presence a reminder of the vastness and mystery of the universe. Whether observed through a telescope or admired with the naked eye, the moon remains a symbol of beauty and enigma.`
   };
 
+  // ---- reading options (accessibility): text size + font + show-pitch, persisted on-device ----
+  var OPT_KEY='reading:opts:v1';
+  var opts={ size:19, font:'grotesk', showHz:false };
+  try{ var _o=localStorage.getItem(OPT_KEY); if(_o) opts=Object.assign(opts, JSON.parse(_o)); }catch(e){}
+  function saveOpts(){ try{ localStorage.setItem(OPT_KEY, JSON.stringify(opts)); }catch(e){} }
+  var FONTS={ grotesk:'"Space Grotesk",system-ui,sans-serif', serif:'Georgia,"Times New Roman",serif', mono:'"IBM Plex Mono",monospace', readable:'system-ui,-apple-system,sans-serif' };
+
   var passageSel=document.getElementById("passage"), passageText=document.getElementById("passageText");
+  var showHzEl=document.getElementById("showHz"), fontSel=document.getElementById("font"), f0valEl=document.getElementById("f0val");
   function showPassage(){ passageText.textContent = PASSAGES[passageSel.value] || ""; }
+  function applyOpts(){
+    passageText.style.fontSize=opts.size+'px';
+    passageText.style.fontFamily=FONTS[opts.font]||FONTS.grotesk;
+    passageText.classList.toggle('pf-readable', opts.font==='readable');
+    if(f0valEl) f0valEl.hidden=!opts.showHz;
+  }
   passageSel.addEventListener("change", showPassage);
-  showPassage();
+  showHzEl.checked=opts.showHz;
+  showHzEl.addEventListener("change", function(){ opts.showHz=showHzEl.checked; saveOpts(); applyOpts(); });
+  fontSel.value=opts.font;
+  fontSel.addEventListener("change", function(){ opts.font=fontSel.value; saveOpts(); applyOpts(); });
+  document.getElementById("szDown").addEventListener("click", function(){ opts.size=Math.max(15, opts.size-2); saveOpts(); applyOpts(); });
+  document.getElementById("szUp").addEventListener("click", function(){ opts.size=Math.min(30, opts.size+2); saveOpts(); applyOpts(); });
+  showPassage(); applyOpts();
 
   // ---- audio + F0 (detection via shared f0.js) ----
   var actx, analyser, srcNode, stream, timeBuf, running=false, raf=0;
@@ -124,7 +170,10 @@
   var samples=[], voicedFrames=0, totalFrames=0, startT=0;
   // scrolling contour — self-scaled to the reader's own range, so it shows *movement*, never absolute high/low
   var hist=[], HIST_MAX=260, cCenter=null, cHalf=null;
+  var levelHist=[], AMP_GAIN=5;             // continuous input-energy trace (responds to all sound, incl. unvoiced)
+  var lastHz=0, lastVoicedT=0, HOLD_MS=550; // hold the pitch value briefly across short gaps (no flicker)
   var contour=document.getElementById("contour"), cctx=contour.getContext("2d");
+  var contourwrap=document.getElementById("contourwrap");
 
   startBtn.addEventListener("click", function(){ running ? stop() : start(); });
 
@@ -138,11 +187,12 @@
     srcNode.connect(analyser);
     timeBuf=new Float32Array(analyser.fftSize);
     running=true; ring=[]; disp=0; voiced=false; tick=0;
-    samples=[]; voicedFrames=0; totalFrames=0; hist=[]; cCenter=null; cHalf=null; startT=performance.now();
+    samples=[]; voicedFrames=0; totalFrames=0; hist=[]; levelHist=[]; cCenter=null; cHalf=null; lastHz=0; lastVoicedT=0; startT=performance.now();
     document.getElementById("statscard").style.display="none";
+    contourwrap.classList.add("recording");
     startBtn.textContent="Stop reading";
-    statusEl.textContent="Reading — pitch is live. Read the passage aloud at a comfortable pace, then Stop."; statusEl.className="status live";
-    drawContour(); loop();
+    statusEl.textContent="Reading — live. Read the passage aloud at a comfortable pace, then Stop."; statusEl.className="status live";
+    paintF0Val(); drawContour(); loop();
   }
   function stop(){
     running=false;
@@ -151,6 +201,7 @@
     if(actx){ try{ actx.close(); }catch(e){} actx=null; }
     startBtn.textContent="Start reading";
     statusEl.textContent="Stopped. Your speaking-pitch summary is below."; statusEl.className="status";
+    contourwrap.classList.remove("recording"); voiced=false; paintF0Val();
     showStats();
   }
   function loop(){
@@ -158,6 +209,9 @@
     raf=requestAnimationFrame(loop);
     if(tick++ % EVERY !== 0) return;
     analyser.getFloatTimeDomainData(timeBuf);
+    var lvl=0, N=timeBuf.length; for(var k=0;k<N;k+=4){ lvl+=timeBuf[k]*timeBuf[k]; }
+    lvl=Math.sqrt(lvl/(N/4));                      // input energy — computed before F0.detect mutates timeBuf
+    levelHist.push(lvl); if(levelHist.length>HIST_MAX) levelHist.shift();
     var pf=F0.detect(timeBuf, actx.sampleRate);
     totalFrames++;
     if(pf && pf.clarity>=(voiced?F0.CLARITY_STAY:F0.CLARITY_ENTER)){
@@ -167,11 +221,19 @@
       var med=medArr(ring);
       disp = disp ? disp*(1-EMA)+med*EMA : med;
       voicedFrames++; samples.push(disp); hist.push(disp);
+      lastHz=disp; lastVoicedT=performance.now();
     } else {
       voiced=false; hist.push(null);
     }
     if(hist.length>HIST_MAX) hist.shift();
-    drawContour();
+    paintF0Val(); drawContour();
+  }
+  // optional pitch value (off by default; clinician-only). Held briefly across gaps so it doesn't flicker.
+  function paintF0Val(){
+    if(!f0valEl || f0valEl.hidden) return;
+    if(!running){ f0valEl.textContent=""; return; }
+    var hold = voiced || (performance.now()-lastVoicedT < HOLD_MS);
+    f0valEl.textContent = (hold && lastHz) ? (Math.round(lastHz)+" Hz") : "—";
   }
   // Self-scaled contour: centered on the reader's own median pitch, scaled to their own spread
   // (with a floor so a monotone voice reads flat, not amplified). No labels, no absolute scale —
@@ -179,6 +241,15 @@
   function drawContour(){
     var W=contour.width, H=contour.height, pad=8, i;
     cctx.clearRect(0,0,W,H); cctx.fillStyle="#0C0B12"; cctx.fillRect(0,0,W,H);
+    // background: continuous input-energy envelope — responds to ALL sound (incl. unvoiced), so the
+    // display keeps moving between voiced stretches instead of feeling staccato.
+    if(levelHist.length>1){
+      cctx.beginPath(); cctx.moveTo(0,H);
+      for(i=0;i<levelHist.length;i++){ var lv=levelHist[i]*AMP_GAIN; if(lv>1)lv=1; cctx.lineTo(W*i/HIST_MAX, H-lv*(H-4)); }
+      cctx.lineTo(W*(levelHist.length-1)/HIST_MAX, H); cctx.closePath();
+      cctx.fillStyle="rgba(244,185,66,.11)"; cctx.fill();
+    }
+    // foreground: pitch-movement line, self-scaled to the reader's own range
     var vals=[]; for(i=0;i<hist.length;i++) if(hist[i]!=null) vals.push(Math.log(hist[i]));
     if(vals.length<2){ cCenter=null; cHalf=null; return; }
     var s=vals.slice().sort(function(a,b){return a-b;}), center=s[Math.floor(s.length/2)];
@@ -188,7 +259,7 @@
     else { cCenter+=(center-cCenter)*0.05; cHalf+=(half-cHalf)*0.05; } // adapt slowly so the line doesn't jitter
     function Y(hz){ var t=(Math.log(hz)-cCenter)/cHalf; if(t>1)t=1; else if(t<-1)t=-1; return H/2 - t*(H/2-pad); }
     cctx.strokeStyle="#F4B942"; cctx.lineWidth=2; cctx.lineJoin="round"; cctx.lineCap="round";
-    var BRIDGE=6, gap=0, started=false;                                // connect across short unvoiced gaps
+    var BRIDGE=8, gap=0, started=false;                                // connect across short unvoiced gaps
     cctx.beginPath();
     for(var j=0;j<hist.length;j++){
       var v=hist[j]; if(v==null){ gap++; continue; }
@@ -214,6 +285,7 @@
     var dur=(performance.now()-startT)/1000;
     function row(k,v,d){ return '<div class="srow2"><span class="sk">'+k+'</span><span class="sd">'+d+'</span><span class="sv">'+v+'</span></div>'; }
     el.innerHTML =
+      (opts.showHz ? row('Mean pitch', Math.round(mean)+' Hz ('+F0.noteName(mean)+')', 'your average speaking pitch') : '') +
       row('Pitch range', rangeSemis.toFixed(1)+' semitones', 'how much your pitch moved (5th–95th pct)') +
       row('Variability', sdc.toFixed(1)+' semitones', 'higher = more expressive · lower = flatter') +
       row('Voiced', pctVoiced+'%', 'share of the reading that was voiced') +
