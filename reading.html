@@ -36,7 +36,8 @@
   .status.live{color:var(--source)}
   .status.err{color:var(--word)}
 
-  .contourwrap{margin:14px 0}
+  .contourwrap{position:sticky;top:0;z-index:20;background:var(--bg);margin:14px 0 0;padding:10px 0}
+  .contourwrap.stuck{box-shadow:0 8px 18px rgba(0,0,0,.45);border-bottom:1px solid var(--hair)}
   .contourwrap .clbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 6px;display:flex;align-items:center}
   .clbl .livedot{display:none;width:7px;height:7px;border-radius:50%;background:var(--word);margin-right:8px}
   .clbl .f0val{color:var(--source);margin-left:auto;letter-spacing:0;text-transform:none;font-size:12px}
@@ -92,13 +93,14 @@
   <span class="status" id="status">Mic off. Pick a passage, press Start, and read it aloud.</span>
 </div>
 
+<div id="stickySentinel" aria-hidden="true" style="height:1px"></div>
 <div class="contourwrap" id="contourwrap">
   <p class="clbl"><span class="livedot"></span>pitch movement<span class="f0val" id="f0val" hidden></span></p>
   <canvas id="contour" width="900" height="84" aria-label="Live pitch-movement contour"></canvas>
 </div>
 
 <div class="options">
-  <label class="opt"><input type="checkbox" id="showHz"> show pitch (Hz)</label>
+  <label class="opt"><input type="checkbox" id="showHz"> show live pitch (Hz)</label>
   <span class="opt">text <button class="szbtn" id="szDown" type="button" aria-label="smaller text">A−</button><button class="szbtn" id="szUp" type="button" aria-label="larger text">A+</button></span>
   <label class="opt">font
     <select id="font">
@@ -113,8 +115,8 @@
 <div class="passage" id="passageText"></div>
 
 <section class="card" id="statscard" style="display:none">
-  <h2>How your pitch moved</h2>
-  <p class="sub">Descriptive — the movement and spread of your pitch over this reading, not a score or a diagnosis.</p>
+  <h2>Your speaking pitch — this reading</h2>
+  <p class="sub">Descriptive — the central tendency and movement of your pitch this reading, not a score or a diagnosis.</p>
   <div id="stats"></div>
 </section>
 
@@ -174,6 +176,13 @@
   var lastHz=0, lastVoicedT=0, HOLD_MS=550; // hold the pitch value briefly across short gaps (no flicker)
   var contour=document.getElementById("contour"), cctx=contour.getContext("2d");
   var contourwrap=document.getElementById("contourwrap");
+  // keep the contour pinned at the top while reading; a sentinel adds a shadow once it's stuck
+  (function(){
+    var sentinel=document.getElementById("stickySentinel");
+    if(sentinel && 'IntersectionObserver' in window){
+      new IntersectionObserver(function(es){ contourwrap.classList.toggle('stuck', !es[0].isIntersecting); }, {threshold:0}).observe(sentinel);
+    }
+  })();
 
   startBtn.addEventListener("click", function(){ running ? stop() : start(); });
 
@@ -283,9 +292,11 @@
     sdc=Math.sqrt(sdc/samples.length);
     var pctVoiced=Math.round(100*voicedFrames/Math.max(1,totalFrames));
     var dur=(performance.now()-startT)/1000;
+    var median=medArr(samples);
     function row(k,v,d){ return '<div class="srow2"><span class="sk">'+k+'</span><span class="sd">'+d+'</span><span class="sv">'+v+'</span></div>'; }
     el.innerHTML =
-      (opts.showHz ? row('Mean pitch', Math.round(mean)+' Hz ('+F0.noteName(mean)+')', 'your average speaking pitch') : '') +
+      row('Mean F0', Math.round(mean)+' Hz ('+F0.noteName(mean)+')', 'average speaking pitch') +
+      row('Median F0', Math.round(median)+' Hz ('+F0.noteName(median)+')', 'typical speaking pitch (robust to outliers)') +
       row('Pitch range', rangeSemis.toFixed(1)+' semitones', 'how much your pitch moved (5th–95th pct)') +
       row('Variability', sdc.toFixed(1)+' semitones', 'higher = more expressive · lower = flatter') +
       row('Voiced', pctVoiced+'%', 'share of the reading that was voiced') +
