@@ -1030,10 +1030,16 @@ import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundl
   var UP=13, LO=14, LC=61, RC=291, EYE_L=33, EYE_R=263;
   var LIP_DOTS=[13,14,61,291,0,17,37,267,39,269]; // light overlay set
 
-  var landmarker=null, stream=null, running=false, haveFace=false, dimsLogged=false;
+  var landmarker=null, stream=null, running=false, haveFace=false, dimsLogged=false, lastTs=0;
   var buf=[], BUF_MAX=14; // rolling {ap,wd}, mirrors the audio window
   var RS = window.RS || {log:function(){},warn:function(){},set:function(){},debug:false};
-  function setFace(v){ if(v!==haveFace){ haveFace=v; RS.log('cam', v?'face acquired':'face lost'); } }
+  function setFace(v){
+    if(v===haveFace) return;
+    haveFace=v; RS.log('cam', v?'face acquired':'face lost');
+    if(running) setHint(v
+      ? '<b>Face tracked.</b> On <i>Freeze</i>, your averaged mouth shape is stored with the vowel — nothing is uploaded.'
+      : '<b style="color:var(--word)">Looking for your face…</b> Center it in the preview with even lighting.');
+  }
 
   window.MouthScope={
     active:function(){ return running && haveFace && buf.length>0; },
@@ -1081,7 +1087,7 @@ import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundl
     running=true; haveFace=false; buf=[];
     camwrap.classList.add("on");
     camBtn.disabled=false; camBtn.textContent="Disable camera";
-    setHint('<b>Second instrument live.</b> Keep your face framed and lit. On <i>Freeze</i>, your averaged mouth shape is stored with the vowel — nothing is uploaded.');
+    setHint('<b>Second instrument live.</b> Looking for your face — center it in the preview with even lighting.');
     loop();
   }
 
@@ -1101,8 +1107,9 @@ import { FilesetResolver, FaceLandmarker } from "./vendor/mediapipe/vision_bundl
     if(video.readyState<2) return;
     var W=video.videoWidth||320, H=video.videoHeight||240;
     if(!dimsLogged && video.videoWidth){ dimsLogged=true; RS.log('cam','video ready', W+'×'+H); }
+    var ts=performance.now(); if(ts<=lastTs) ts=lastTs+1; lastTs=ts;   // strictly increasing — MediaPipe requires it
     var t0=performance.now(), res;
-    try{ res=landmarker.detectForVideo(video, t0); }catch(e){ return; }
+    try{ res=landmarker.detectForVideo(video, ts); }catch(e){ RS.warn('cam','detectForVideo failed', e); return; }
     var dt=performance.now()-t0;
     octx.clearRect(0,0,overlay.width,overlay.height);
     if(!res || !res.faceLandmarks || !res.faceLandmarks.length){ setFace(false); RS.set('cam',{running:true,face:false,detectMs:Math.round(dt)}); return; }
